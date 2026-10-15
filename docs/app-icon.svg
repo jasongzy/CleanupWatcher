@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72" role="img" aria-label="Cleanup Watcher icon">
+  <rect x="18" y="18" width="72" height="72" rx="16" fill="#157765"/>
+  <path d="M49 53L65 31" fill="none" stroke="#FFF" stroke-width="6.5" stroke-linecap="round"/>
+  <path d="M43 50L59 63L48 80Q39 77 30 67Z" fill="#B7F2D7"/>
+  <path d="M39 68L44 61M46 73L51 66" fill="none" stroke="#157765" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M73 39L75.5 45.5L82 48L75.5 50.5L73 57L70.5 50.5L64 48L70.5 45.5ZM36 28L37.5 32.5L42 34L37.5 35.5L36 40L34.5 35.5L30 34L34.5 32.5Z" fill="#FFF"/>
+</svg>

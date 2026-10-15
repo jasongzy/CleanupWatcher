@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.CleanupWatcher" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>
