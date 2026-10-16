@@ -606,18 +606,16 @@ Result execute(Plan &job, const std::function<bool()> &active) {
     }
     return result;
 }
-std::string resultJson(const Plan &job, const Result &result, bool includePaths) {
+std::string resultJson(const Plan &job, const Result &result, bool deletedOnly) {
     std::string out = "{\"id\":" + json(job.rule.id) + ",\"root\":" + json(job.rule.root) +
                       ",\"deleted\":" + std::to_string(result.deleted) +
                       ",\"error\":" + json(result.error.empty() ? job.error : result.error) + ",\"paths\":[";
-    bool first = true;
-    for (const auto &item : job.items) {
-        if (!includePaths)
-            break;
-        if (!first)
+    // Execution stops at the first failure, so successful removals form a prefix.
+    auto count = deletedOnly ? std::min(job.items.size(), static_cast<size_t>(result.deleted)) : job.items.size();
+    for (size_t i = 0; i < count; ++i) {
+        if (i)
             out += ',';
-        first = false;
-        out += json(item.path);
+        out += json(job.items[i].path);
     }
     return out + "]}";
 }

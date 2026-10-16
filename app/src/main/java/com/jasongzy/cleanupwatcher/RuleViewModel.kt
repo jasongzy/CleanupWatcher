@@ -191,13 +191,11 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         settings.edit {
             putBoolean("boot", response.getBoolean("boot"))
         }
-        val list = response.getJSONArray("records")
+        val requiredVersion = mutable.value.requiredBackendVersionCode
         val records =
-            (0 until list.length())
-                .map { index ->
-                    RecentRecord.decode(list.getJSONObject(index))
-                }
-                .reversed()
+            withContext(Dispatchers.Default) {
+                RecentRecord.decodeAll(response, requiredVersion)
+            }
         val health = response.optJSONObject("health") ?: JSONObject()
         mutable.value =
             mutable.value.copy(

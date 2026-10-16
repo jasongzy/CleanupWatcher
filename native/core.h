@@ -60,6 +60,6 @@ Fd openRoot(const std::string &logical, bool allowMissing = false);
 Fd openWithin(int root, const std::string &path, bool directory = false);
 Plan plan(const Rule &rule, std::string focus = "");
 Result execute(Plan &plan, const std::function<bool()> &active = [] { return true; });
-std::string resultJson(const Plan &plan, const Result &result = {}, bool includePaths = true);
+std::string resultJson(const Plan &plan, const Result &result = {}, bool deletedOnly = false);
 std::string recover(const Rule &rule);
 } // namespace cw

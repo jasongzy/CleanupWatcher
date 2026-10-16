@@ -157,7 +157,7 @@
     <string name="delete_selected">Delete selected rules</string>
     <string name="clear_records">Clear records</string>
     <string name="clear_records_confirm">Clear the recent records?</string>
-    <string name="records_retention">Restarting the backend clears records</string>
+    <string name="records_retention">Records from the past 12 hours; restarting the backend clears them</string>
     <string name="empty_tree_hint">Clean matching folders when their entire tree contains only empty folders.</string>
     <string name="batch_empty_tree_hint">Selected folders are cleaned when their entire tree consists of empty folders. Selected files will also be cleaned.</string>
     <plurals name="import_confirm"><item quantity="one">Import %1$d rule?</item><item quantity="other">Import %1$d rules?</item></plurals>

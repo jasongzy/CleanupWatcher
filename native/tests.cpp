@@ -1,4 +1,5 @@
 #include "core.h"
+#include "records.h"
 #include <cassert>
 #include <cerrno>
 #include <fcntl.h>
@@ -171,6 +172,39 @@ static void emptyChildrenChecks(const std::string &root) {
     assert(execute(job).deleted == 0 && fs::exists(scope + "/Race/new.bin"));
     assert(fs::exists(scope + "/root.log") && fs::exists(root + "/outside/precious.log"));
 }
+static void recordChecks(const std::string &root) {
+    constexpr long long now = 100000000, age = 12 * 60 * 60 * 1000;
+    std::vector<RecentRecord> records{{now - age, "expired"}, {now - age + 1, "recent"}, {now, "latest"}};
+    trimRecords(records, now);
+    assert(records.size() == 2 && records.front().data == "recent");
+    trimRecords(records, now + age);
+    assert(records.empty());
+    for (int index = 0; index < 105; ++index)
+        records.push_back({now, std::to_string(index)});
+    trimRecords(records, now);
+    assert(records.size() == 99 && records.front().data == "6" && records.back().data == "104");
+    records = {{now, std::string(128 * 1024, 'a')}, {now, std::string(128 * 1024, 'b')}};
+    trimRecords(records, now);
+    assert(records.size() == 2);
+    records.push_back({now, "latest"});
+    trimRecords(records, now);
+    assert(records.size() == 2 && records.front().data.front() == 'b' && records.back().data == "latest");
+    auto scope = root + "/record-checks";
+    fs::create_directory(scope);
+    put(scope + "/first.log");
+    put(scope + "/second.log");
+    auto job = plan(make(scope));
+    assert(job.items.size() == 2 && job.error.empty());
+    int captures = 0;
+    beforeCapture = [&] { ++captures; };
+    auto result = execute(job, [&] { return captures < 2; });
+    beforeCapture = nullptr;
+    assert(result.deleted == 1 && result.error == "cancelled");
+    assert(!fs::exists(scope + "/" + job.items[0].path) && fs::exists(scope + "/" + job.items[1].path));
+    auto record = resultJson(job, result, true);
+    assert(record.ends_with("\"paths\":[" + json(job.items[0].path) + "]}"));
+    assert(resultJson(job, {0, "rate"}, true).ends_with("\"paths\":[]}"));
+}
 int main(int argc, char **argv) {
     if (argc == 2) {
         casefoldChecks(argv[1]);
@@ -183,6 +217,7 @@ int main(int argc, char **argv) {
     fs::create_directory(root + "/outside");
     put(root + "/outside/precious.log", "sentinel");
     emptyChildrenChecks(root);
+    recordChecks(root);
     auto scope = root + "/scope";
     auto rule = make(scope);
     auto literal = make(scope, File, "a*.log");

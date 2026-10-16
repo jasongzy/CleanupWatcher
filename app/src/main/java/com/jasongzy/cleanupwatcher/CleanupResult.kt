@@ -41,13 +41,30 @@ data class CleanupResult(
     }
 }
 
-data class RecentRecord(val time: Long, val name: String, val deleted: Int, val error: String) {
+data class RecentRecord(
+    val time: Long,
+    val name: String,
+    val root: String,
+    val paths: List<String>,
+    val deleted: Int,
+    val error: String,
+) {
     companion object {
+        fun decodeAll(response: JSONObject, requiredVersion: Int): List<RecentRecord> {
+            if (needsUpdate(response.opt("versionCode"), requiredVersion)) return emptyList()
+            val list = response.getJSONArray("records")
+            require(list.length() <= 99) { "limit" }
+            return (0 until list.length()).map { decode(list.getJSONObject(it)) }.reversed()
+        }
+
         fun decode(value: JSONObject): RecentRecord {
             val result = CleanupResult.decode(value)
+            require(result.paths.size == result.deleted) { "config" }
             return RecentRecord(
                 value.getLong("time"),
                 value.get("name") as? String ?: error("config"),
+                result.root,
+                result.paths,
                 result.deleted,
                 result.error,
             )

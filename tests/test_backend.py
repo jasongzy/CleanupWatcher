@@ -258,6 +258,8 @@ if __name__ == "__main__":
         snapshot = invoke(binary, env, "status")
         assert 0 < snapshot["records"][-1]["time"] <= int(time.time() * 1000) + 1000
         assert snapshot["records"][-1]["name"] == "*.log"
+        assert snapshot["records"][-1]["root"] == folder
+        assert snapshot["records"][-1]["paths"] == ["event.log"]
         cleared = invoke(binary, env, "clear-records")
         assert cleared["records"] == [] and cleared["paused"] and cleared["rules"] == snapshot["rules"]
         invoke(binary, env, "resume")
@@ -280,8 +282,13 @@ if __name__ == "__main__":
             write_file(log)
             burst.append(log)
         wait_for(lambda: all(not os.path.exists(log) for log in burst))
+        wait_for(lambda: sum(record["deleted"] for record in invoke(binary, env, "status")["records"]) == 32)
         records = invoke(binary, env, "status")["records"]
-        assert len(records) == 12 and all(record["time"] > 0 for record in records)
+        assert 0 < len(records) <= 99 and all(record["time"] > 0 for record in records)
+        assert sum(record["deleted"] for record in records) == 32
+        for record in records:
+            assert len(record["paths"]) == record["deleted"]
+            assert all(not os.path.exists(os.path.join(record["root"], path)) for path in record["paths"])
         invoke(binary, env, "rules", config(folder, 2, "Junk", False))
         junk = os.path.join(folder, "Junk")
         os.mkdir(junk)

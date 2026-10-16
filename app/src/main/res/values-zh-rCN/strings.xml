@@ -157,7 +157,7 @@
     <string name="delete_selected">删除所选规则</string>
     <string name="clear_records">清空记录</string>
     <string name="clear_records_confirm">清空最近记录？</string>
-    <string name="records_retention">重启后端会清空记录</string>
+    <string name="records_retention">保留最近 12 小时的记录，重启后端会清空记录</string>
     <string name="empty_tree_hint">匹配的文件夹为空或整棵目录树仅由空文件夹组成时才清理。</string>
     <string name="batch_empty_tree_hint">所选文件夹为空或整棵目录树仅由空文件夹组成时才清理；选中的文件仍会清理。</string>
     <plurals name="import_confirm"><item quantity="other">导入 %1$d 条规则？</item></plurals>

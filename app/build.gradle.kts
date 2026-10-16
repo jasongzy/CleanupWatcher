@@ -146,7 +146,7 @@ val buildBackends =
                 )
                 sources.from(
                     rootProject.fileTree("native") {
-                        include("core.*", "daemon.cpp", "lifecycle.*", "browser.*")
+                        include("core.*", "daemon.cpp", "lifecycle.*", "browser.*", "records.h")
                     }
                 )
             }

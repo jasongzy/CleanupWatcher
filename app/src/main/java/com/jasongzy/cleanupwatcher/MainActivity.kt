@@ -11,6 +11,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
@@ -181,6 +182,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
     var selected by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var removingBatch by rememberSaveable { mutableStateOf(false) }
     var clearingRecords by rememberSaveable { mutableStateOf(false) }
+    var recordDetails by remember { mutableStateOf<RecentRecord?>(null) }
     var enabling by rememberSaveable { mutableStateOf<String?>(null) }
     var cleaning by rememberSaveable { mutableStateOf<String?>(null) }
     var componentRemoval by rememberSaveable { mutableStateOf<String?>(null) }
@@ -539,20 +541,22 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                 items(state.records) { record ->
                     val error = record.error
                     ListItem(
+                        modifier =
+                            Modifier.clickable(role = Role.Button) { recordDetails = record },
                         headlineContent = {
                             Text(record.name)
                         },
                         supportingContent = {
                             Column {
                                 Text(
-                                    if (error.isEmpty())
-                                        pluralStringResource(
-                                            R.plurals.cleaned,
-                                            record.deleted,
-                                            record.deleted,
-                                        )
-                                    else errorText(error)
+                                    pluralStringResource(
+                                        R.plurals.cleaned,
+                                        record.deleted,
+                                        record.deleted,
+                                    )
                                 )
+                                if (error.isNotEmpty())
+                                    Text(errorText(error), color = MaterialTheme.colorScheme.error)
                                 Text(
                                     formatTimestamp(record.time),
                                     style = MaterialTheme.typography.bodySmall,
@@ -792,6 +796,39 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                 TextButton(model::dismissBatchPreview, enabled = !state.busy) {
                     Text(stringResource(if (added || imported) R.string.later else R.string.cancel))
                 }
+            },
+        )
+    }
+    recordDetails?.let { record ->
+        AlertDialog(
+            onDismissRequest = { recordDetails = null },
+            title = {
+                Text(pluralStringResource(R.plurals.cleaned, record.deleted, record.deleted))
+            },
+            text = {
+                LazyColumn(
+                    Modifier.heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item { Text(formatTimestamp(record.time)) }
+                    item { Text(record.root, style = MaterialTheme.typography.bodyMedium) }
+                    if (record.error.isNotEmpty())
+                        item {
+                            Text(errorText(record.error), color = MaterialTheme.colorScheme.error)
+                        }
+                    items(record.paths) { path ->
+                        SelectionContainer {
+                            Text(
+                                "${record.root.trimEnd('/')}/$path",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton({ recordDetails = null }) { Text(stringResource(R.string.close)) }
             },
         )
     }

@@ -25,9 +25,41 @@ class CleanupResultTest {
                 put("restored", 1)
             }
         assertEquals(1, CleanupResult.decode(recovery).restored)
-        val record = RecentRecord.decode(response().put("time", 123L).put("name", "*.log"))
+        val record =
+            RecentRecord.decode(response().put("time", 123L).put("name", "*.log").put("deleted", 1))
         assertEquals(123L, record.time)
         assertEquals("*.log", record.name)
+        assertEquals("/sdcard/Logs", record.root)
+        assertEquals(listOf("a.log"), record.paths)
+    }
+
+    @Test
+    fun recentRecordsContainExactlyTheSuccessfulDeletions() {
+        val value = response().put("time", 123L).put("name", "*.log")
+        assertThrows(IllegalArgumentException::class.java) { RecentRecord.decode(value) }
+        value.put("deleted", 2)
+        assertThrows(IllegalArgumentException::class.java) { RecentRecord.decode(value) }
+        value.put("deleted", 1).put("error", "cancelled")
+        val record = RecentRecord.decode(value)
+        assertEquals(listOf("a.log"), record.paths)
+        assertEquals("cancelled", record.error)
+    }
+
+    @Test
+    fun recentRecordsWaitForACompatibleBackend() {
+        val record = response().put("time", 123L).put("name", "*.log").put("deleted", 1)
+        val status = JSONObject().put("records", JSONArray().put(record))
+        assertTrue(RecentRecord.decodeAll(status, 2).isEmpty())
+        status.put("versionCode", 1)
+        assertTrue(RecentRecord.decodeAll(status, 2).isEmpty())
+        status.put("versionCode", 2)
+        assertEquals(listOf("a.log"), RecentRecord.decodeAll(status, 2).single().paths)
+        record.put("paths", JSONArray())
+        assertThrows(IllegalArgumentException::class.java) { RecentRecord.decodeAll(status, 2) }
+        status.put("versionCode", 1)
+        assertTrue(RecentRecord.decodeAll(status, 2).isEmpty())
+        status.put("versionCode", 2).put("records", JSONArray(List(100) { record }))
+        assertThrows(IllegalArgumentException::class.java) { RecentRecord.decodeAll(status, 2) }
     }
 
     @Test

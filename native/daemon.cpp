@@ -1,6 +1,7 @@
 #include "browser.h"
 #include "core.h"
 #include "lifecycle.h"
+#include "records.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -33,7 +34,7 @@ static std::mutex mutex;
 static std::mutex deletion;
 static std::condition_variable watchReady;
 static std::vector<Rule> rules;
-static std::vector<std::string> records;
+static std::vector<RecentRecord> records;
 static std::map<std::string, std::string> health;
 static std::atomic<bool> stopping{false}, paused{false}, watcherFailed{false};
 static std::atomic<unsigned> revision{1}, watchCount{0}, watchRevision{0};
@@ -97,6 +98,10 @@ static long long millis() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
 }
+static long long wallMillis() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
 static void notify() {
     uint64_t one = 1;
     if (wake >= 0) {
@@ -107,18 +112,16 @@ static void notify() {
 }
 static void record(const Plan &job, const Result &result) {
     std::lock_guard lock(mutex);
-    auto entry = resultJson(job, result, false);
+    auto entry = resultJson(job, result, true);
     entry.pop_back();
-    auto time =
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
-            .count();
-    records.push_back(entry + ",\"time\":" + std::to_string(time) +
-                      ",\"name\":" + json(job.rule.action == EmptyChildren ? job.rule.root : job.rule.pattern) + "}");
-    if (records.size() > 12)
-        records.erase(records.begin());
+    auto time = wallMillis();
+    records.push_back({time, entry + ",\"time\":" + std::to_string(time) + ",\"name\":" +
+                                 json(job.rule.action == EmptyChildren ? job.rule.root : job.rule.pattern) + "}"});
+    trimRecords(records, time);
 }
 static std::string status() {
     std::lock_guard lock(mutex);
+    trimRecords(records, wallMillis());
     std::string out =
         "{\"versionName\":" + json(BACKEND_VERSION_NAME) + ",\"versionCode\":" + std::to_string(BACKEND_VERSION_CODE) +
         ",\"running\":true,\"paused\":" + std::string(paused ? "true" : "false") +
@@ -127,7 +130,7 @@ static std::string status() {
     for (size_t i = 0; i < records.size(); ++i) {
         if (i)
             out += ',';
-        out += records[i];
+        out += records[i].data;
     }
     out += "],\"checking\":" + std::string(watchRevision != revision ? "true" : "false") + ",\"health\":{";
     bool first = true;
