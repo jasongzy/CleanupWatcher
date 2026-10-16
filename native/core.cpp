@@ -10,6 +10,7 @@
 #include <linux/fscrypt.h>
 #include <linux/magic.h>
 #include <linux/openat2.h>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <strings.h>
@@ -291,36 +292,47 @@ bool protectedPath(const Rule &rule, int root, const std::string &path, bool sub
     }
     return false;
 }
-static std::vector<std::string> list(int fd, size_t limit = MAX_VISITED) {
+template <typename Predicate> static bool scanDirectory(int fd, Predicate accept, size_t limit = MAX_VISITED) {
     int copy = openat(fd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (copy < 0)
         fail("list");
-    DIR *dir = fdopendir(copy);
+    std::unique_ptr<DIR, int (*)(DIR *)> dir(fdopendir(copy), closedir);
     if (!dir) {
         int error = errno;
         close(copy);
         errno = error;
         fail("list");
     }
-    std::vector<std::string> names;
-    errno = 0;
-    while (auto *entry = readdir(dir)) {
-        std::string name(entry->d_name);
-        if (name != "." && name != "..")
-            names.push_back(name);
-        if (names.size() > limit) {
-            closedir(dir);
-            throw std::runtime_error("limit");
-        }
+    size_t count = 0;
+    while (true) {
         errno = 0;
+        auto *entry = readdir(dir.get());
+        if (!entry) {
+            if (errno)
+                fail("list");
+            return false;
+        }
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+            continue;
+        if (++count > limit)
+            throw std::runtime_error("limit");
+        if (accept(entry->d_name))
+            return true;
     }
-    int error = errno;
-    closedir(dir);
-    if (error) {
-        errno = error;
-        fail("list");
-    }
+}
+static std::vector<std::string> list(int fd, size_t limit = MAX_VISITED) {
+    std::vector<std::string> names;
+    scanDirectory(
+        fd,
+        [&](const char *name) {
+            names.emplace_back(name);
+            return false;
+        },
+        limit);
     return names;
+}
+static bool emptyDirectory(int fd) {
+    return !scanDirectory(fd, [](const char *) { return true; });
 }
 static bool exactName(int parent, const std::string &name) {
     struct stat st{};
@@ -334,8 +346,7 @@ static bool exactName(int parent, const std::string &name) {
     if ((type == EXT4_SUPER_MAGIC || type == F2FS_SUPER_MAGIC) && ioctl(parent, FS_IOC_GETFLAGS, &flags) == 0 &&
         !(flags & FS_CASEFOLD_FL))
         return true;
-    auto names = list(parent);
-    return std::find(names.begin(), names.end(), name) != names.end();
+    return scanDirectory(parent, [&](const char *entry) { return name == entry; });
 }
 static bool exactPath(int root, const std::string &path) {
     Fd parent(dup(root));
@@ -360,7 +371,7 @@ Plan plan(const Rule &rule, std::string focus) {
             auto identity = statFd(staging.get());
             if (identity.st_uid != geteuid() || (identity.st_mode & 0777) != 0700)
                 throw std::runtime_error("staging");
-            if (!list(staging.get()).empty())
+            if (!emptyDirectory(staging.get()))
                 throw std::runtime_error("retained");
         } else if (errno != ENOENT)
             fail("staging");

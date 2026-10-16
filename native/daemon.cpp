@@ -308,6 +308,11 @@ static void worker() {
                                 break;
                             }
                     }
+                    if (directory && !rule.recursive &&
+                        (rule.action == 0 || (watch.path.empty() && !matchesName(rule, name))))
+                        continue;
+                    if (rule.action == 1 && (event->mask & IN_CLOSE_WRITE))
+                        continue;
                     if (directory && (event->mask & IN_MOVED_FROM)) {
                         ++revision;
                         continue;

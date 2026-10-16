@@ -150,6 +150,29 @@ def check_concurrent_pause(binary: str, env: dict):
     invoke(binary, env, "resume")
 
 
+def check_unrelated_moves(binary: str, env: dict, root: str):
+    scope = os.path.join(root, "unrelated")
+    noise = os.path.join(scope, "noise")
+    renamed = os.path.join(scope, "renamed")
+    os.makedirs(noise)
+    for action, name in ((0, "target.log"), (2, "Junk")):
+        invoke(binary, env, "rules", config(scope, action, name, False))
+        invoke(binary, env, "settled")
+        target = os.path.join(scope, name)
+        if action == 0:
+            write_file(target)
+        else:
+            os.mkdir(target)
+            write_file(os.path.join(target, "child.bin"))
+        deadline = time.monotonic() + 5
+        while os.path.exists(target) and time.monotonic() < deadline:
+            os.rename(noise, renamed)
+            os.rename(renamed, noise)
+            time.sleep(0.05)
+        assert not os.path.exists(target), "Unrelated directory moves postponed cleanup"
+    invoke(binary, env, "rules", "CW\n")
+
+
 if __name__ == "__main__":
     assert os.geteuid() == 0, "Run in the isolated Linux test environment as root"
     binary = os.path.abspath("build/native-tests/test-daemon")
@@ -163,6 +186,7 @@ if __name__ == "__main__":
         check_control_during_rebuild(binary, env, root)
         check_concurrent_pause(binary, env)
         check_failed_scan_recovers(binary, env, root)
+        check_unrelated_moves(binary, env, root)
         invoke(binary, env, "resume")
         maximum = config(folder)
         maximum = maximum[:-1] + " " * (128 * 1024 - len(maximum)) + "\n"
