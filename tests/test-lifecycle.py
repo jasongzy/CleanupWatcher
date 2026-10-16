@@ -102,8 +102,8 @@ if __name__ == "__main__":
         metadata = manage(binary, env, "inspect", "1")
         assert metadata["moduleVersionCode"] == metadata["requiredModuleVersionCode"] == 1
         assert metadata["moduleVersionName"] == "v1.0"
-        assert manage(binary, env, "version")["versionName"] == "1.0.0"
-        assert metadata["requiredBackendVersionCode"] == manage(binary, env, "version")["versionCode"] == 1
+        assert manage(binary, env, "version")["versionName"] == "1.1.0"
+        assert metadata["requiredBackendVersionCode"] == manage(binary, env, "version")["versionCode"] == 2
         properties = os.path.join(module, "module.prop")
         with open(properties, encoding="utf-8") as stream:
             original = stream.read()
@@ -143,7 +143,7 @@ if __name__ == "__main__":
         wait_for(lambda: os.path.exists(os.path.join(home, "control.sock")))
         first_pid = daemon_pid(home)
         assert invoke(binary, env, "status")["versionCode"] == metadata["requiredBackendVersionCode"]
-        assert invoke(binary, env, "status")["versionName"] == "1.0.0"
+        assert invoke(binary, env, "status")["versionName"] == "1.1.0"
         assert invoke(binary, env, "status")["rules"] == initial
         changed = config(scope, pattern="*.log")
         assert manage(binary, env, "configure", input=changed)["rules"] == changed
