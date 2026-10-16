@@ -1,6 +1,8 @@
+import fcntl
 import json
 import os
 import shutil
+import signal
 import socket
 import struct
 import subprocess
@@ -20,6 +22,49 @@ def daemon_pid(home: str) -> int:
     with socket.socket(socket.AF_UNIX) as client:
         client.connect(os.path.join(home, "control.sock"))
         return struct.unpack("3i", client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[0]
+
+
+def running_pid(home: str) -> int:
+    try:
+        return daemon_pid(home)
+    except (FileNotFoundError, ConnectionRefusedError):
+        return 0
+
+
+def guardian_stopped(home: str) -> bool:
+    with open(os.path.join(home, "guardian.lock"), "rb") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            return False
+
+
+def check_guardian_restarts(binary: str, env: dict):
+    home = env["CW_TEST_HOME"]
+    manage(binary, env, "install")
+    try:
+        manage(binary, env, "start")
+        wait_for(lambda: running_pid(home) != 0)
+        pid = daemon_pid(home)
+        for index, delay in enumerate((1, 2, 4, 8, 1, 1, 2, 4, 8)):
+            if index == 4:
+                time.sleep(6)  # The test binary uses a five-second stability window.
+            started = time.monotonic()
+            os.kill(pid, signal.SIGKILL)
+            wait_for(lambda: running_pid(home) not in (0, pid), timeout=delay + 8)
+            assert time.monotonic() - started >= delay - 0.1, "Restart skipped its backoff"
+            pid = daemon_pid(home)
+        os.kill(pid, signal.SIGKILL)
+        wait_for(lambda: guardian_stopped(home))
+        assert running_pid(home) == 0, "Guardian exceeded five consecutive short failures"
+        manage(binary, env, "start")
+        wait_for(lambda: running_pid(home) != 0)
+        invoke(binary, env, "stop")
+        wait_for(lambda: guardian_stopped(home))
+        assert running_pid(home) == 0, "Guardian restarted a normally stopped backend"
+    finally:
+        manage(binary, env, "uninstall")
 
 
 if __name__ == "__main__":
@@ -191,7 +236,8 @@ if __name__ == "__main__":
         manage(binary, env, "configure", input=config(os.path.join(scope, "missing")))
         manage(binary, env, "uninstall")
         assert not os.path.exists(home) and os.path.exists(other)
-        print("Independent lifecycle, exact removal, guardian shutdown and preservation checks passed")
+        check_guardian_restarts(binary, env)
+        print("Lifecycle, removal, guardian backoff, stability reset and preservation checks passed")
     finally:
         subprocess.run([binary, "ctl", "stop"], capture_output=True, env=env, timeout=10)
         assert os.path.abspath(root).startswith("/tmp/cleanupwatcher-test-")

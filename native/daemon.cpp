@@ -43,6 +43,11 @@ static int listener = -1;
 static std::mutex clientMutex;
 static std::condition_variable clientsDone;
 static constexpr int MAX_CLIENTS = 4;
+#ifdef CLEANUPWATCHER_TEST
+static constexpr long long STABLE_RUNTIME_MS = 5000;
+#else
+static constexpr long long STABLE_RUNTIME_MS = 5 * 60 * 1000;
+#endif
 static int clients = 0, waiters = 0;
 struct WaitSlot {
     WaitSlot(const WaitSlot &) = delete;
@@ -751,9 +756,11 @@ int main(int argc, char **argv) {
                     Fd null(open("/dev/null", O_RDWR));
                     for (int fd = 0; fd < 3; ++fd)
                         dup2(null.get(), fd);
-                    for (unsigned attempt = 0; attempt < 5; ++attempt) {
+                    unsigned failures = 0;
+                    while (true) {
                         if (faccessat(dir.get(), "removing", F_OK, 0) == 0)
                             _exit(0);
+                        auto started = millis();
                         pid_t child = fork();
                         if (child < 0)
                             _exit(1);
@@ -762,13 +769,20 @@ int main(int argc, char **argv) {
                             _exit(1);
                         }
                         int status = 0;
-                        while (waitpid(child, &status, 0) < 0 && errno == EINTR) {
-                        }
+                        pid_t waited;
+                        do {
+                            waited = waitpid(child, &status, 0);
+                        } while (waited < 0 && errno == EINTR);
+                        if (waited != child)
+                            _exit(1);
                         if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
                             _exit(0);
-                        sleep(1U << attempt);
+                        if (millis() - started >= STABLE_RUNTIME_MS)
+                            failures = 0;
+                        else if (++failures >= 5)
+                            _exit(1);
+                        sleep(1U << (failures ? failures - 1 : 0));
                     }
-                    _exit(1);
                 }
                 std::cout << "{\"starting\":true}\n";
             }
