@@ -334,10 +334,11 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun install() = task {
+        val updating = mutable.value.backendNeedsUpdate
         backend.manage("install")
         startBackend()
         refreshState()
-        notify(R.string.backend_installed_synced)
+        notify(if (updating) R.string.backend_updated_synced else R.string.backend_installed_synced)
     }
 
     fun start() = task {

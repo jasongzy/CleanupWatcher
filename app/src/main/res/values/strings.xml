@@ -89,6 +89,7 @@
     <string name="stop_backend">Stop backend</string>
     <string name="start_backend">Start backend</string>
     <string name="reinstall_backend">Reinstall backend</string>
+    <string name="update_backend">Update backend</string>
     <string name="uninstall_backend">Remove backend</string>
     <string name="uninstall_backend_title">Remove the backend?</string>
     <string name="uninstall_backend_message">Remove the backend program and runtime settings? App rules will be kept and synchronized when the backend is installed again.</string>
@@ -179,6 +180,7 @@
     <string name="rules_enabled">Rules enabled</string>
     <string name="rules_disabled">Rules disabled</string>
     <string name="backend_installed_synced">Backend installed; cleanup rules synchronized</string>
+    <string name="backend_updated_synced">Backend updated; cleanup rules synchronized</string>
     <string name="backend_started_synced">Backend started; cleanup rules synchronized</string>
     <string name="backend_removed">Backend removed</string>
     <string name="backend_stopped">Backend stopped</string>

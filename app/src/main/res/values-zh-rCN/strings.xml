@@ -89,6 +89,7 @@
     <string name="stop_backend">停止后端</string>
     <string name="start_backend">启动后端</string>
     <string name="reinstall_backend">重新安装后端</string>
+    <string name="update_backend">更新后端</string>
     <string name="uninstall_backend">移除后端</string>
     <string name="uninstall_backend_title">移除后端？</string>
     <string name="uninstall_backend_message">移除后端程序与运行配置？App 中的规则会保留，下次安装后同步。</string>
@@ -179,6 +180,7 @@
     <string name="rules_enabled">规则已启用</string>
     <string name="rules_disabled">规则已停用</string>
     <string name="backend_installed_synced">后端已安装，清理规则已同步</string>
+    <string name="backend_updated_synced">后端已更新，清理规则已同步</string>
     <string name="backend_started_synced">后端已启动，清理规则已同步</string>
     <string name="backend_removed">后端已移除</string>
     <string name="backend_stopped">后端已停止</string>

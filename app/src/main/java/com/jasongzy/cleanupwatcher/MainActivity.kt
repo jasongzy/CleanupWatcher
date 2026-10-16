@@ -379,7 +379,12 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                         if (state.backendPresent)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TextButton(model::install, enabled = !state.busy) {
-                                    Text(stringResource(R.string.reinstall_backend))
+                                    Text(
+                                        stringResource(
+                                            if (state.backendNeedsUpdate) R.string.update_backend
+                                            else R.string.reinstall_backend
+                                        )
+                                    )
                                 }
                                 TextButton(
                                     { componentRemoval = "backend" },
