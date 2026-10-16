@@ -1,7 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72" role="img" aria-label="Cleanup Watcher icon">
-  <rect x="18" y="18" width="72" height="72" rx="16" fill="#157765"/>
-  <path d="M49 53L65 31" fill="none" stroke="#FFF" stroke-width="6.5" stroke-linecap="round"/>
-  <path d="M43 50L59 63L48 80Q39 77 30 67Z" fill="#B7F2D7"/>
-  <path d="M39 68L44 61M46 73L51 66" fill="none" stroke="#157765" stroke-width="2.4" stroke-linecap="round"/>
-  <path d="M73 39L75.5 45.5L82 48L75.5 50.5L73 57L70.5 50.5L64 48L70.5 45.5ZM36 28L37.5 32.5L42 34L37.5 35.5L36 40L34.5 35.5L30 34L34.5 32.5Z" fill="#FFF"/>
+  <rect x="18" y="18" width="72" height="72" rx="16" fill="#087F72"/>
+  <g transform="translate(5 2) rotate(45 49 52)">
+    <path d="M49,53L49,25" fill="none" stroke="#FFF" stroke-width="6.5" stroke-linecap="round"/>
+    <path d="M43,52L55,52L63,74Q63.5,75.5 62,76L58,77L54,65Q53.7,64.1 52.8,64.4Q51.9,64.7 52.2,65.6L56.1,77.6Q53.6,78.2 50,78.3L50,67Q50,66 49,66Q48,66 48,67L48,78.3Q44.4,78.2 41.9,77.6L45.8,65.6Q46.1,64.7 45.2,64.4Q44.3,64.1 44,65L40,77L36,76Q34.5,75.5 35,74Z" fill="#B7F2D7"/>
+  </g>
+  <path d="M73 49L75.5 55.5L82 58L75.5 60.5L73 67L70.5 60.5L64 58L70.5 55.5ZM36 28L37.5 32.5L42 34L37.5 35.5L36 40L34.5 35.5L30 34L34.5 32.5Z" fill="#FFF"/>
 </svg>
