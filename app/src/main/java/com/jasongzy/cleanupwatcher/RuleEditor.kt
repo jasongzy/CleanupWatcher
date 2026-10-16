@@ -49,13 +49,15 @@ internal fun RuleEditor(
 ) {
     var root by rememberSaveable { mutableStateOf(original.root) }
     var pattern by rememberSaveable { mutableStateOf(original.pattern) }
-    var action by rememberSaveable { mutableIntStateOf(original.action) }
+    var action by rememberSaveable { mutableStateOf(original.action) }
     var literal by rememberSaveable { mutableStateOf(original.literal) }
     var recursive by rememberSaveable { mutableStateOf(original.recursive) }
     var whitelist by rememberSaveable { mutableStateOf(original.whitelist.joinToString("\n")) }
     var advanced by rememberSaveable {
         mutableStateOf(
-            original.recursive || original.whitelist.isNotEmpty() || original.action == 1
+            original.recursive ||
+                original.whitelist.isNotEmpty() ||
+                original.action == RuleAction.EmptyTree
         )
     }
     var attempted by rememberSaveable { mutableStateOf(false) }
@@ -75,10 +77,12 @@ internal fun RuleEditor(
             whitelist = whitelist.lines().filter { it.isNotEmpty() },
         )
     val error = if (attempted) rule.error() else null
-    fun chooseAction(value: Int) {
+    fun chooseAction(value: RuleAction) {
         val updated = rule.withAction(value)
         action = updated.action
         literal = updated.literal
+        pattern = updated.pattern
+        recursive = updated.recursive
     }
     fun submit(rules: List<Rule>) {
         val updated = rules.firstOrNull { it.id == original.id }?.copy(enabled = original.enabled)
@@ -152,55 +156,65 @@ internal fun RuleEditor(
                     style = MaterialTheme.typography.labelLarge,
                 )
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf(R.string.target_files, R.string.target_folders).forEachIndexed {
-                        index,
-                        label ->
-                        SegmentedButton(
-                            enabled = !busy,
-                            selected = if (index == 0) action == 0 else action != 0,
-                            onClick = {
-                                if (index == 0) chooseAction(0)
-                                else if (action == 0) chooseAction(2)
-                            },
-                            shape = SegmentedButtonDefaults.itemShape(index, 2),
-                        ) {
-                            Text(stringResource(label))
+                    listOf(
+                            RuleAction.File to R.string.target_files,
+                            RuleAction.FolderTree to R.string.target_folders,
+                            RuleAction.EmptyChildren to R.string.target_empty_children,
+                        )
+                        .forEachIndexed { index, (target, label) ->
+                            val selected =
+                                action == target ||
+                                    (target == RuleAction.FolderTree &&
+                                        action == RuleAction.EmptyTree)
+                            SegmentedButton(
+                                enabled = !busy,
+                                selected = selected,
+                                onClick = { if (!selected) chooseAction(target) },
+                                shape = SegmentedButtonDefaults.itemShape(index, 3),
+                            ) {
+                                Text(stringResource(label))
+                            }
                         }
-                    }
                 }
-                OutlinedTextField(
-                    pattern,
-                    { pattern = it },
-                    Modifier.fillMaxWidth(),
-                    label = {
-                        Text(
-                            stringResource(
-                                if (action == 0) R.string.pattern else R.string.directory_name
+                if (action != RuleAction.EmptyChildren)
+                    OutlinedTextField(
+                        pattern,
+                        { pattern = it },
+                        Modifier.fillMaxWidth(),
+                        label = {
+                            Text(
+                                stringResource(
+                                    if (action == RuleAction.File) R.string.pattern
+                                    else R.string.directory_name
+                                )
                             )
-                        )
-                    },
-                    supportingText = {
-                        Text(
-                            stringResource(
-                                when {
-                                    action == 2 -> R.string.tree_name_hint
-                                    literal -> R.string.directory_hint
-                                    else -> R.string.pattern_hint
-                                }
+                        },
+                        supportingText = {
+                            Text(
+                                stringResource(
+                                    when {
+                                        action == RuleAction.FolderTree -> R.string.tree_name_hint
+                                        literal -> R.string.directory_hint
+                                        else -> R.string.pattern_hint
+                                    }
+                                )
                             )
-                        )
-                    },
-                    singleLine = true,
-                    enabled = !busy,
-                    isError = error in setOf("pattern", "directory_pattern"),
-                )
-                if (action != 0)
+                        },
+                        singleLine = true,
+                        enabled = !busy,
+                        isError = error in setOf("pattern", "directory_pattern"),
+                    )
+                if (action != RuleAction.File)
                     Text(
                         stringResource(
-                            if (action == 2) R.string.tree_hint else R.string.empty_hint_rule
+                            when (action) {
+                                RuleAction.FolderTree -> R.string.tree_hint
+                                RuleAction.EmptyChildren -> R.string.empty_children_hint
+                                else -> R.string.empty_tree_hint
+                            }
                         ),
                         color =
-                            if (action == 2) MaterialTheme.colorScheme.error
+                            if (action == RuleAction.FolderTree) MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                         minLines = 2,
@@ -216,19 +230,25 @@ internal fun RuleEditor(
                     Text(stringResource(R.string.more_options))
                 }
                 if (advanced) {
-                    if (action != 0)
-                        OptionRow(R.string.empty_only, action == 1, enabled = !busy) {
-                            chooseAction(if (it) 1 else 2)
+                    if (action == RuleAction.FolderTree || action == RuleAction.EmptyTree)
+                        OptionRow(
+                            R.string.empty_tree_only,
+                            action == RuleAction.EmptyTree,
+                            enabled = !busy,
+                        ) {
+                            chooseAction(if (it) RuleAction.EmptyTree else RuleAction.FolderTree)
                         }
-                    OptionRow(
-                        R.string.use_pattern,
-                        action != 2 && !literal,
-                        enabled = !busy && action != 2,
-                    ) {
-                        literal = !it
-                    }
-                    OptionRow(R.string.include_subfolders, recursive, enabled = !busy) {
-                        recursive = it
+                    if (action != RuleAction.EmptyChildren) {
+                        OptionRow(
+                            R.string.use_pattern,
+                            action != RuleAction.FolderTree && !literal,
+                            enabled = !busy && action != RuleAction.FolderTree,
+                        ) {
+                            literal = !it
+                        }
+                        OptionRow(R.string.include_subfolders, recursive, enabled = !busy) {
+                            recursive = it
+                        }
                     }
                     OutlinedTextField(
                         whitelist,
@@ -275,6 +295,7 @@ internal fun RuleEditor(
             root,
             availableRules.coerceAtLeast(0),
             { browser = false },
+            directoriesOnly = action == RuleAction.EmptyChildren,
             chooseFolder = { path ->
                 browser = false
                 root = path
@@ -284,13 +305,19 @@ internal fun RuleEditor(
                 browser = false
                 if (entries.size > 1) batch = entries
                 else {
-                    val selected = runCatching { rulesForEntries(entries, false).single() }
+                    val selected = runCatching {
+                        rulesForEntries(
+                                entries,
+                                if (action == RuleAction.File) RuleAction.FolderTree else action,
+                            )
+                            .single()
+                    }
                     selected
                         .onSuccess {
                             root = it.root
                             pattern = it.pattern
                             action = it.action
-                            literal = true
+                            literal = it.literal
                             recursive = false
                             whitelist = ""
                             pickerError = null
@@ -300,7 +327,13 @@ internal fun RuleEditor(
             },
         )
     if (batch.isNotEmpty())
-        BatchRuleEditor(batch, { batch = it }, { batch = emptyList() }, busy = busy) { rules ->
+        BatchRuleEditor(
+            batch,
+            { batch = it },
+            { batch = emptyList() },
+            busy = busy,
+            initialFolderAction = if (action == RuleAction.File) RuleAction.FolderTree else action,
+        ) { rules ->
             submit(
                 rules.mapIndexed { index, rule ->
                     if (index == 0) rule.copy(id = original.id) else rule
@@ -319,7 +352,7 @@ internal fun RuleEditor(
                 ) {
                     Text(stringResource(R.string.preview_enable))
                     Text(updated.root)
-                    Text(updated.pattern, style = MaterialTheme.typography.titleMedium)
+                    Text(ruleName(updated), style = MaterialTheme.typography.titleMedium)
                     Text(stringResource(actionLabel(updated.action)))
                     Text(
                         stringResource(
@@ -327,7 +360,7 @@ internal fun RuleEditor(
                             else R.string.scope_direct
                         )
                     )
-                    if (updated.action == 2)
+                    if (updated.action == RuleAction.FolderTree)
                         Text(
                             stringResource(R.string.tree_hint),
                             color = MaterialTheme.colorScheme.error,

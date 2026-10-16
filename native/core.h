@@ -22,9 +22,10 @@ class Fd {
         return value_;
     }
 };
+enum Action { File = 0, EmptyTree = 1, FolderTree = 2, EmptyChildren = 3 };
 struct Rule {
     std::string id, root, pattern;
-    int action = 0;
+    Action action = File;
     bool recursive = false, enabled = false;
     std::vector<std::string> whitelist;
     bool literal = false;

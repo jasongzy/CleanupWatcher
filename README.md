@@ -13,7 +13,7 @@ An Android root cleaner built for reliable, continuous background monitoring. An
 - Stable and reliable independent backend
 - Efficient, low-overhead monitoring using inotify kernel events, without periodic polling
 - Clean files or folders by name or pattern
-- Options to clean only empty folders and protect whitelisted paths
+- Clean empty child folders or entire empty folder trees, with whitelisted paths protected
 - Import and export rules
 - Optional Magisk module for reliable startup at boot
 

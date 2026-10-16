@@ -217,9 +217,8 @@ std::vector<Rule> decodeRules(const std::string &value) {
         std::istringstream row(line);
         Rule rule;
         std::string id, root, pattern, whitelist, extra;
-        int recursive, enabled, literal;
-        if (!(row >> id >> root >> pattern >> rule.action >> recursive >> enabled >> literal >> whitelist) ||
-            row >> extra)
+        int action, recursive, enabled, literal;
+        if (!(row >> id >> root >> pattern >> action >> recursive >> enabled >> literal >> whitelist) || row >> extra)
             throw std::runtime_error("config");
         rule.id = unhex(id);
         rule.root = unhex(root);
@@ -228,11 +227,14 @@ std::vector<Rule> decodeRules(const std::string &value) {
         rule.enabled = enabled == 1;
         rule.literal = literal == 1;
         if (rule.id.empty() || rule.id.size() > 64 || rule.pattern.empty() || rule.pattern.size() > 255 ||
-            rule.pattern.find('/') != std::string::npos || rule.action < 0 || rule.action > 2 || recursive < 0 ||
+            rule.pattern.find('/') != std::string::npos || action < File || action > EmptyChildren || recursive < 0 ||
             recursive > 1 || enabled < 0 || enabled > 1 || literal < 0 || literal > 1 || rules.size() >= 128)
             throw std::runtime_error("config");
+        rule.action = static_cast<Action>(action);
+        if (rule.action == EmptyChildren && (rule.pattern != "*" || rule.recursive || rule.literal))
+            throw std::runtime_error("config");
         backingPath(rule.root);
-        if (rule.action == 2 &&
+        if (rule.action == FolderTree &&
             (rule.pattern == "." || rule.pattern == ".." || strcasecmp(rule.pattern.c_str(), STAGING) == 0))
             throw std::runtime_error("config");
         std::istringstream whitelistLines(unhex(whitelist, 64 * 1024));
@@ -261,8 +263,8 @@ std::string encodeRules(const std::vector<Rule> &rules) {
     return out;
 }
 bool matchesName(const Rule &rule, const std::string &name) {
-    return rule.literal || rule.action == 2 ? name == rule.pattern
-                                            : fnmatch(rule.pattern.c_str(), name.c_str(), 0) == 0;
+    return rule.literal || rule.action == FolderTree ? name == rule.pattern
+                                                     : fnmatch(rule.pattern.c_str(), name.c_str(), 0) == 0;
 }
 static std::string prefixAtDepth(const std::string &path, size_t depth) {
     size_t seen = 0;
@@ -385,8 +387,8 @@ Plan plan(const Rule &rule, std::string focus) {
         walk = [&](const std::string &relative, bool tree, int depth) -> bool {
             if (++visited > MAX_VISITED || depth > 64)
                 throw std::runtime_error("limit");
-            if (protectedPath(rule, out.root.get(), relative, tree)) {
-                if (tree && rule.action != 1)
+            if (protectedPath(rule, out.root.get(), relative, tree || rule.action == EmptyChildren)) {
+                if (tree && rule.action != EmptyTree)
                     throw std::runtime_error("protected");
                 return false;
             }
@@ -394,7 +396,8 @@ Plan plan(const Rule &rule, std::string focus) {
             try {
                 node = openWithin(out.root.get(), relative);
             } catch (const std::exception &e) {
-                if ((!tree || rule.action == 1) && std::string(e.what()) == "symlink")
+                if ((!tree || rule.action == EmptyTree || rule.action == EmptyChildren) &&
+                    std::string(e.what()) == "symlink")
                     return false;
                 throw;
             }
@@ -402,26 +405,34 @@ Plan plan(const Rule &rule, std::string focus) {
             bool directory = S_ISDIR(st.st_mode);
             bool matches = matchesName(rule, relative.substr(relative.find_last_of('/') + 1));
             bool empty = directory;
-            if (directory) {
-                bool subtree = tree || (matches && rule.action != 0);
+            if (rule.action == EmptyChildren) {
+                if (!directory || relative.find('/') != std::string::npos)
+                    return false;
+                auto dir = openWithin(out.root.get(), relative, true);
+                out.directories.push_back(relative);
+                empty = emptyDirectory(dir.get());
+                if (empty)
+                    out.items.push_back({relative, st, std::move(node)});
+            } else if (directory) {
+                bool subtree = tree || (matches && rule.action != File);
                 if (!subtree && !rule.recursive)
                     return false;
                 auto dir = openWithin(out.root.get(), relative, true);
                 out.directories.push_back(relative);
                 auto names = enumerate(dir.get());
-                if (subtree && rule.action == 2 && protectedPath(rule, out.root.get(), relative, true))
+                if (subtree && rule.action == FolderTree && protectedPath(rule, out.root.get(), relative, true))
                     throw std::runtime_error("protected");
                 if (subtree || rule.recursive)
                     for (const auto &name : names)
                         if (!walk(relative + "/" + name, subtree, depth + 1))
                             empty = false;
                 empty = empty && !protectedPath(rule, out.root.get(), relative, true);
-                if (subtree && (rule.action != 1 || empty))
+                if (subtree && (rule.action != EmptyTree || empty))
                     out.items.push_back({relative, st, std::move(node)});
             } else if (S_ISREG(st.st_mode)) {
-                if ((tree && rule.action != 1) || (matches && rule.action == 0))
+                if ((tree && rule.action != EmptyTree) || (matches && rule.action == File))
                     out.items.push_back({relative, st, std::move(node)});
-            } else if (tree && rule.action != 1)
+            } else if (tree && rule.action != EmptyTree)
                 throw std::runtime_error("type");
             if (!out.items.empty() && out.items.back().path == relative)
                 pathBytes += json(relative).size() + 1;
@@ -430,7 +441,7 @@ Plan plan(const Rule &rule, std::string focus) {
             return empty;
         };
         if (focus.empty()) {
-            if ((rule.literal || rule.action == 2) && !rule.recursive) {
+            if ((rule.literal || rule.action == FolderTree) && !rule.recursive) {
                 if (exactName(out.root.get(), rule.pattern))
                     walk(rule.pattern, false, 1);
             } else
@@ -440,13 +451,13 @@ Plan plan(const Rule &rule, std::string focus) {
             if (!validRelative(focus))
                 throw std::runtime_error("path");
             bool insideTree = false;
-            if (rule.action != 0) {
+            if (rule.action != File && rule.action != EmptyChildren) {
                 std::istringstream parts(focus);
                 std::string part, prefix;
                 while (std::getline(parts, part, '/')) {
                     prefix += (prefix.empty() ? "" : "/") + part;
                     if (matchesName(rule, part) && (rule.recursive || prefix == part)) {
-                        if (rule.action == 2 && protectedPath(rule, out.root.get(), prefix, true))
+                        if (rule.action == FolderTree && protectedPath(rule, out.root.get(), prefix, true))
                             throw std::runtime_error("protected");
                         insideTree = true;
                         focus = prefix;
@@ -458,7 +469,7 @@ Plan plan(const Rule &rule, std::string focus) {
                 exactPath(out.root.get(), focus))
                 walk(focus, false, 1 + static_cast<int>(std::count(focus.begin(), focus.end(), '/')));
         }
-        if (rule.action == 1) {
+        if (rule.action == EmptyTree) {
             std::vector<std::string> targets;
             for (const auto &item : out.items)
                 if ((rule.recursive || item.path.find('/') == std::string::npos) &&

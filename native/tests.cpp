@@ -20,7 +20,7 @@ static bool hasExactEntry(const fs::path &directory, const std::string &name) {
             return true;
     return false;
 }
-static Rule make(const std::string &root, int action = 0, const std::string &pattern = "*.log") {
+static Rule make(const std::string &root, Action action = File, const std::string &pattern = "*.log") {
     return {"test", root, pattern, action, true, true, {}};
 }
 static void rejects(const std::function<void()> &action) {
@@ -43,7 +43,7 @@ static void casefoldChecks(const std::string &scope) {
     fs::remove(scope + (captureSupported ? "/probe-to" : "/probe-from"));
     put(scope + "/actual.log", "sentinel");
     assert(fs::exists(scope + "/ACTUAL.log"));
-    auto literal = make(scope, 0, "ACTUAL.log");
+    auto literal = make(scope, File, "ACTUAL.log");
     literal.literal = true;
     literal.recursive = false;
     auto job = plan(literal);
@@ -78,19 +78,19 @@ static void casefoldChecks(const std::string &scope) {
     assert(job.error.empty() && job.items.empty() && fs::exists(scope + "/ä.log"));
     fs::remove(scope + "/ä.log");
     fs::create_directories(scope + "/Junk/nested");
-    auto tree = make(scope, 2, "Junk");
+    auto tree = make(scope, FolderTree, "Junk");
     tree.recursive = false;
     tree.whitelist = {"junk/future.log"};
     job = plan(tree);
     assert(job.error == "protected" && execute(job).deleted == 0);
-    tree.action = 1;
+    tree.action = EmptyTree;
     job = plan(tree);
     assert(job.error.empty() && job.items.empty());
     put(scope + "/Junk/nested/keep.log", "sentinel");
     files.whitelist = {"junk/NESTED"};
     job = plan(files, "Junk/nested/keep.log");
     assert(job.error.empty() && job.items.empty());
-    tree.action = 2;
+    tree.action = FolderTree;
     tree.whitelist.clear();
     job = plan(tree);
     assert(job.error.empty() && job.items.size() == 3);
@@ -130,6 +130,47 @@ static void casefoldChecks(const std::string &scope) {
     if (!captureSupported)
         std::cout << "Casefold fixture lacks RENAME_NOREPLACE; successful captures use the main Linux safety suite\n";
 }
+static void emptyChildrenChecks(const std::string &root) {
+    auto scope = root + "/children";
+    fs::create_directories(scope + "/Empty");
+    fs::create_directory(scope + "/.Empty");
+    fs::create_directories(scope + "/Tree/Deep");
+    fs::create_directory(scope + "/Hidden");
+    put(scope + "/Hidden/.nomedia", "");
+    fs::create_directory(scope + "/Link");
+    fs::create_symlink(root + "/outside/precious.log", scope + "/Link/alias");
+    fs::create_directory(scope + "/Special");
+    assert(mkfifo((scope + "/Special/pipe").c_str(), 0600) == 0);
+    fs::create_directory(scope + "/Keep");
+    fs::create_directory(scope + "/Future");
+    fs::create_directory_symlink(scope + "/Tree", scope + "/Alias");
+    put(scope + "/root.log", "sentinel");
+    auto rule = make(scope, EmptyChildren, "*");
+    rule.recursive = false;
+    rule.whitelist = {"Keep", "Future/item"};
+    auto encoded = encodeRules({rule});
+    assert(decodeRules(encoded).front().action == EmptyChildren);
+    for (const auto &invalid : {Rule{"bad", scope, "*", EmptyChildren, true, true, {}},
+                                Rule{"bad", scope, "named", EmptyChildren, false, true, {}},
+                                Rule{"bad", scope, "*", EmptyChildren, false, true, {}, true}})
+        rejects([&] { decodeRules(encodeRules({invalid})); });
+    auto job = plan(rule);
+    assert(job.error.empty() && job.items.size() == 2);
+    for (const auto &item : job.items)
+        assert(item.path == "Empty" || item.path == ".Empty");
+    for (const auto &directory : job.directories)
+        assert(directory.find('/') == std::string::npos);
+    assert(plan(rule, "Tree/Deep").items.empty());
+    assert(execute(job).deleted == 2);
+    assert(fs::exists(scope) && fs::exists(scope + "/Tree/Deep") && fs::exists(scope + "/Hidden/.nomedia"));
+    assert(fs::exists(scope + "/Keep") && fs::exists(scope + "/Future") && fs::is_symlink(scope + "/Alias"));
+    fs::create_directory(scope + "/Race");
+    job = plan(rule, "Race");
+    assert(job.items.size() == 1);
+    put(scope + "/Race/new.bin", "sentinel");
+    assert(execute(job).deleted == 0 && fs::exists(scope + "/Race/new.bin"));
+    assert(fs::exists(scope + "/root.log") && fs::exists(root + "/outside/precious.log"));
+}
 int main(int argc, char **argv) {
     if (argc == 2) {
         casefoldChecks(argv[1]);
@@ -141,9 +182,10 @@ int main(int argc, char **argv) {
     fs::create_directory(root + "/scope");
     fs::create_directory(root + "/outside");
     put(root + "/outside/precious.log", "sentinel");
+    emptyChildrenChecks(root);
     auto scope = root + "/scope";
     auto rule = make(scope);
-    auto literal = make(scope, 0, "a*.log");
+    auto literal = make(scope, File, "a*.log");
     literal.literal = true;
     literal.recursive = false;
     put(scope + "/a*.log");
@@ -162,7 +204,7 @@ int main(int argc, char **argv) {
     put(scope + "/Junk[1]/inner/deep.bin");
     put(scope + "/Junk1/a.log", "sentinel");
     put(scope + "/Other/Junk[1]/a.log", "sentinel");
-    auto named = make(scope, 2, "Junk[1]");
+    auto named = make(scope, FolderTree, "Junk[1]");
     named.recursive = false;
     auto exactTree = plan(named);
     assert(execute(exactTree).deleted == 4 && fs::exists(scope + "/Junk1/a.log"));
@@ -174,14 +216,14 @@ int main(int argc, char **argv) {
     fs::remove_all(scope + "/Junk1");
     fs::create_directory(scope + "/FileTarget");
     put(scope + "/FileTarget/contents.bin", "sentinel");
-    auto fileTarget = make(scope, 0, "FileTarget");
+    auto fileTarget = make(scope, File, "FileTarget");
     fileTarget.literal = true;
     fileTarget.recursive = false;
     auto wrongType = plan(fileTarget);
     assert(wrongType.error.empty() && wrongType.items.empty() && execute(wrongType).deleted == 0);
     assert(fs::exists(scope + "/FileTarget/contents.bin"));
     put(scope + "/FolderTarget", "sentinel");
-    for (int action : {1, 2}) {
+    for (Action action : {EmptyTree, FolderTree}) {
         auto folderTarget = make(scope, action, "FolderTarget");
         folderTarget.literal = true;
         folderTarget.recursive = false;
@@ -199,12 +241,18 @@ int main(int argc, char **argv) {
     shallow.recursive = false;
     auto shallowJob = plan(shallow);
     assert(shallowJob.error.empty() && execute(shallowJob).deleted == 1);
-    shallow.action = 1;
+    auto directEmpty = make(scope, EmptyChildren, "*");
+    directEmpty.recursive = false;
+    auto directJob = plan(directEmpty);
+    assert(directJob.error.empty());
+    for (const auto &item : directJob.items)
+        assert(item.path != "Large");
+    shallow.action = EmptyTree;
     shallow.pattern = "Large";
     shallowJob = plan(shallow);
     assert(shallowJob.error == "limit" && shallowJob.items.empty() &&
            shallowJob.directories == std::vector<std::string>{"Large"});
-    shallow.action = 2;
+    shallow.action = FolderTree;
     shallowJob = plan(shallow);
     assert(shallowJob.error == "limit" && execute(shallowJob).deleted == 0);
     assert(fs::exists(scope + "/Large/20000"));
@@ -219,7 +267,7 @@ int main(int argc, char **argv) {
     fs::create_directory(scope + "/with space");
     put(scope + "/with space / ");
     put(scope + "/with space/ ", "sentinel");
-    auto spaced = make(scope + "/with space ", 0, " ");
+    auto spaced = make(scope + "/with space ", File, " ");
     spaced.literal = true;
     spaced.recursive = false;
     auto spacedJob = plan(spaced);
@@ -293,7 +341,7 @@ int main(int argc, char **argv) {
     fs::remove(scope + "/capture.log");
     fs::create_directory(scope + "/Junk");
     put(scope + "/Junk/a.log");
-    auto tree = make(scope, 2, "Junk");
+    auto tree = make(scope, FolderTree, "Junk");
     tree.whitelist = {"Junk/a.log"};
     job = plan(tree);
     assert(job.error == "protected");
@@ -313,14 +361,14 @@ int main(int argc, char **argv) {
     assert(result.error.empty() && result.deleted == 2);
     assert(!fs::exists(scope + "/Junk"));
     fs::create_directory(scope + "/Empty");
-    auto empty = make(scope, 1, "Empty");
+    auto empty = make(scope, EmptyTree, "Empty");
     job = plan(empty);
     put(scope + "/Empty/new.txt");
     result = execute(job);
     assert(result.deleted == 0 && !result.error.empty());
     assert(fs::exists(scope + "/Empty/new.txt"));
     fs::create_directories(scope + "/EmptyTree/other/deep");
-    auto emptyTree = make(scope, 1, "EmptyTree");
+    auto emptyTree = make(scope, EmptyTree, "EmptyTree");
     emptyTree.recursive = false;
     auto emptyJob = plan(emptyTree);
     assert(emptyJob.error.empty() && emptyJob.items.size() == 3);
@@ -344,7 +392,7 @@ int main(int argc, char **argv) {
     fs::create_directory(scope + "/EmptyMany");
     for (int index = 0; index < 513; ++index)
         fs::create_directory(scope + "/EmptyMany/" + std::to_string(index));
-    auto manyEmpty = make(scope, 1, "EmptyMany");
+    auto manyEmpty = make(scope, EmptyTree, "EmptyMany");
     manyEmpty.recursive = false;
     emptyJob = plan(manyEmpty);
     assert(emptyJob.error == "limit" && execute(emptyJob).deleted == 0);
@@ -353,7 +401,7 @@ int main(int argc, char **argv) {
     fs::create_directories(scope + "/Occupied/Empty/other");
     fs::create_directories(scope + "/Occupied/unmatched");
     put(scope + "/Occupied/keep.bin", "sentinel");
-    auto nestedEmpty = make(scope, 1, "Occupied");
+    auto nestedEmpty = make(scope, EmptyTree, "Occupied");
     nestedEmpty.recursive = false;
     assert(plan(nestedEmpty).items.empty());
     nestedEmpty.pattern = "Empty";
@@ -366,7 +414,7 @@ int main(int argc, char **argv) {
     fs::create_directory(scope + "/Overlap");
     put(scope + "/Overlap/remove.log");
     put(scope + "/Overlap/keep.log");
-    auto parentRule = make(scope, 2, "Overlap");
+    auto parentRule = make(scope, FolderTree, "Overlap");
     parentRule.whitelist = {"Overlap/keep.log"};
     auto childRule = make(scope + "/Overlap");
     childRule.whitelist = {"keep.log"};

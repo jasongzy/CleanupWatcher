@@ -7,6 +7,31 @@ import org.junit.Test
 
 class RuleJsonTest {
     @Test
+    fun treeAndDirectEmptyRulesHaveDistinctFormats() {
+        val tree =
+            Rule(pattern = "Cache", action = RuleAction.EmptyTree, recursive = true, enabled = true)
+        val children =
+            Rule(root = "/sdcard/Cache", whitelist = listOf("keep"))
+                .withAction(RuleAction.EmptyChildren)
+        val document = JSONObject(RuleJson.encode(listOf(tree, children)))
+        val entries = document.getJSONArray("rules")
+        assertEquals("empty-tree", entries.getJSONObject(0).getString("target"))
+        val entry = entries.getJSONObject(1)
+        assertEquals("empty-children", entry.getString("target"))
+        assertEquals(
+            setOf("root", "target", "enabled", "whitelist"),
+            entry.keys().asSequence().toSet(),
+        )
+        val restored = RuleJson.decode(document.toString())
+        assertEquals(
+            listOf(tree, children).map { it.copy(id = "") },
+            restored.map { it.copy(id = "") },
+        )
+        entry.put("recursive", true)
+        assertThrows(IllegalArgumentException::class.java) { RuleJson.decode(document.toString()) }
+    }
+
+    @Test
     fun unorderedImportAndMergedRulesAreSortedImmediately() {
         val existing = Rule(root = "/sdcard/B", pattern = "middle.log", enabled = true)
         val incoming =
@@ -88,7 +113,7 @@ class RuleJsonTest {
         val restored = RuleJson.decode(exported).single()
         assertEquals(original.copy(id = restored.id), restored)
         assertNotEquals(original.id, restored.id)
-        val tree = original.copy(action = 2, literal = false)
+        val tree = original.copy(action = RuleAction.FolderTree, literal = false)
         assertTrue(RuleJson.decode(RuleJson.encode(listOf(tree))).single().literal)
     }
 

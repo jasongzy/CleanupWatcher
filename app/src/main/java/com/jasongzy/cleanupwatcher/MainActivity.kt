@@ -153,7 +153,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                         it.id,
                         it.root,
                         it.pattern,
-                        it.action,
+                        it.action.code,
                         it.recursive,
                         it.enabled,
                         it.whitelist.joinToString("\n"),
@@ -166,7 +166,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                     it[0] as String,
                     it[1] as String,
                     it[2] as String,
-                    it[3] as Int,
+                    RuleAction.fromCode(it[3] as Int),
                     it[4] as Boolean,
                     it[5] as Boolean,
                     (it[6] as String).lines().filter(String::isNotEmpty),
@@ -574,7 +574,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
         AlertDialog(
             onDismissRequest = { removing = null },
             title = { Text(stringResource(R.string.remove_title)) },
-            text = { Text(stringResource(R.string.remove_message, rule.pattern)) },
+            text = { Text(stringResource(R.string.remove_message, ruleName(rule))) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -674,7 +674,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
             text = {
                 LazyColumn(Modifier.heightIn(max = 280.dp)) {
                     items(state.rules.filter { it.id in selected }, key = { it.id }) { rule ->
-                        Text(rule.pattern, Modifier.padding(vertical = 4.dp))
+                        Text(ruleName(rule), Modifier.padding(vertical = 4.dp))
                     }
                 }
             },
@@ -741,7 +741,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                             state.rules
                                 .firstOrNull { it.id == preview.id }
                                 ?.let {
-                                    Text(it.pattern, style = MaterialTheme.typography.titleSmall)
+                                    Text(ruleName(it), style = MaterialTheme.typography.titleSmall)
                                 }
                             Text(
                                 preview.root,
@@ -933,7 +933,7 @@ private fun RuleCard(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                if (rule.action != 2 && !rule.literal)
+                if (rule.action in listOf(RuleAction.File, RuleAction.EmptyTree) && !rule.literal)
                     RuleBadge(stringResource(R.string.rule_wildcards))
                 if (rule.recursive) RuleBadge(stringResource(R.string.rule_subfolders))
                 if (rule.whitelist.isNotEmpty())
@@ -958,9 +958,10 @@ private fun RuleBadge(text: String) {
     }
 }
 
-internal fun actionLabel(action: Int): Int =
+internal fun actionLabel(action: RuleAction): Int =
     when (action) {
-        1 -> R.string.action_empty
-        2 -> R.string.action_tree
-        else -> R.string.action_files
+        RuleAction.EmptyTree -> R.string.action_empty_tree
+        RuleAction.FolderTree -> R.string.action_tree
+        RuleAction.EmptyChildren -> R.string.action_empty_children
+        RuleAction.File -> R.string.action_files
     }

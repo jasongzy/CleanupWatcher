@@ -18,7 +18,7 @@
     <string name="pattern">File name</string>
     <string name="pattern_hint">Use * for any characters, for example *.log</string>
     <string name="action_files">Files</string>
-    <string name="action_empty">Empty folders</string>
+    <string name="action_empty_tree">Empty folder trees</string>
     <string name="action_tree">Folders and contents</string>
     <string name="tree_hint">Each matching folder will be deleted with all its files and subfolders.</string>
     <string name="include_subfolders">Include subfolders</string>
@@ -116,7 +116,7 @@
     <string name="directory_name">Folder name</string>
     <string name="directory_hint">An exact name, for example logs</string>
     <string name="tree_name_hint">Match an exact folder name to delete its contents, for example logs</string>
-    <string name="empty_only">Only delete empty folders</string>
+    <string name="empty_tree_only">Only clean empty folder trees</string>
     <string name="more_options">More options</string>
     <string name="scope_direct">Monitor this folder</string>
     <string name="scope_recursive">Monitor this folder and its subfolders</string>
@@ -157,8 +157,8 @@
     <string name="clear_records">Clear records</string>
     <string name="clear_records_confirm">Clear the recent records?</string>
     <string name="records_retention">Restarting the backend clears records</string>
-    <string name="empty_hint_rule">Clean empty folders, including trees made entirely of empty subfolders.</string>
-    <string name="batch_empty_hint">Selected folders are cleaned when their entire tree consists of empty folders. Selected files will also be cleaned.</string>
+    <string name="empty_tree_hint">Clean matching folders when their entire tree contains only empty folders.</string>
+    <string name="batch_empty_tree_hint">Selected folders are cleaned when their entire tree consists of empty folders. Selected files will also be cleaned.</string>
     <plurals name="import_confirm"><item quantity="one">Import %1$d rule?</item><item quantity="other">Import %1$d rules?</item></plurals>
     <string name="import_append">Append</string>
     <string name="import_replace">Overwrite</string>
@@ -191,4 +191,8 @@
     <string name="boot_managed_by_magisk">Start at boot is managed by the Magisk module</string>
     <string name="cleanup_finished">Cleanup finished</string>
     <string name="recovery_finished">Restore finished</string>
+    <string name="target_empty_children">Empty subfolders</string>
+    <string name="action_empty_children">Empty child folders</string>
+    <string name="empty_children_hint">Clean empty folders directly inside each monitored folder. The monitored folders themselves are kept.</string>
+    <string name="error_backend_update">Update the backend first.</string>
 </resources>

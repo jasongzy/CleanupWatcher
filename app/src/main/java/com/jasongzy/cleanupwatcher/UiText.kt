@@ -4,6 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 
 @Composable
+internal fun ruleName(rule: Rule): String =
+    if (rule.action == RuleAction.EmptyChildren) stringResource(R.string.target_empty_children)
+    else rule.pattern
+
+@Composable
 internal fun componentVersionText(version: ComponentVersion): String =
     when {
         version.name != null && version.code != null -> "${version.name} (${version.code})"
@@ -63,6 +68,7 @@ internal fun errorResource(error: String): Int {
             "directory_pattern" -> R.string.error_directory_pattern
             "whitelist" -> R.string.error_whitelist
             "config" -> R.string.error_config
+            "update" -> R.string.error_backend_update
             "storage" -> R.string.error_storage
             "path",
             "stat",

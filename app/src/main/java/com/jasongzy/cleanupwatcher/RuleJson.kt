@@ -25,22 +25,23 @@ internal object RuleJson {
                 "rules",
                 JSONArray().apply {
                     rules.sortedRules().forEach { rule ->
-                        put(
+                        val entry =
                             JSONObject()
                                 .put("root", rule.root)
-                                .put("name", rule.pattern)
-                                .put(
-                                    "target",
-                                    listOf("file", "empty-folder", "folder-tree")[rule.action],
-                                )
-                                .put(
-                                    "match",
-                                    if (rule.literal || rule.action == 2) "exact" else "glob",
-                                )
-                                .put("recursive", rule.recursive)
+                                .put("target", rule.action.target)
                                 .put("enabled", rule.enabled)
                                 .put("whitelist", JSONArray(rule.whitelist))
-                        )
+                        if (rule.action != RuleAction.EmptyChildren)
+                            entry
+                                .put("name", rule.pattern)
+                                .put(
+                                    "match",
+                                    if (rule.literal || rule.action == RuleAction.FolderTree)
+                                        "exact"
+                                    else "glob",
+                                )
+                                .put("recursive", rule.recursive)
+                        put(entry)
                     }
                 },
             )
@@ -94,35 +95,34 @@ internal object RuleJson {
         return (0 until entries.length())
             .map { index ->
                 val entry = entries.getJSONObject(index)
+                fun string(key: String): String = entry.get(key) as? String ?: error("config")
+                val action =
+                    RuleAction.entries.firstOrNull { it.target == string("target") }
+                        ?: error("config")
+                val emptyChildren = action == RuleAction.EmptyChildren
                 require(
                     entry.keys().asSequence().toSet() ==
-                        setOf(
-                            "root",
-                            "name",
-                            "target",
-                            "match",
-                            "recursive",
-                            "enabled",
-                            "whitelist",
-                        )
+                        setOf("root", "target", "enabled", "whitelist") +
+                            if (emptyChildren) emptySet() else setOf("name", "match", "recursive")
                 ) {
                     "config"
                 }
-                fun string(key: String): String = entry.get(key) as? String ?: error("config")
-                val action = listOf("file", "empty-folder", "folder-tree").indexOf(string("target"))
-                val match = string("match")
-                require(action >= 0 && match in setOf("exact", "glob")) { "config" }
-                require(action != 2 || match == "exact") { "directory_pattern" }
-                require(entry.get("recursive") is Boolean && entry.get("enabled") is Boolean) {
+                val match = if (emptyChildren) "glob" else string("match")
+                require(match in setOf("exact", "glob")) { "config" }
+                require(action != RuleAction.FolderTree || match == "exact") { "directory_pattern" }
+                require(
+                    (emptyChildren || entry.get("recursive") is Boolean) &&
+                        entry.get("enabled") is Boolean
+                ) {
                     "config"
                 }
                 val whitelist = entry.getJSONArray("whitelist")
                 require(whitelist.length() <= 128) { "limit" }
                 Rule(
                         root = string("root"),
-                        pattern = string("name"),
+                        pattern = if (emptyChildren) "*" else string("name"),
                         action = action,
-                        recursive = entry.getBoolean("recursive"),
+                        recursive = !emptyChildren && entry.getBoolean("recursive"),
                         enabled = entry.getBoolean("enabled"),
                         literal = match == "exact",
                         whitelist =

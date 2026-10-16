@@ -44,6 +44,7 @@ internal fun RootPicker(
     dismiss: () -> Unit,
     chooseFolder: (String) -> Unit,
     chooseEntries: (List<RootEntry>) -> Unit,
+    directoriesOnly: Boolean = false,
 ) {
     val context = LocalContext.current.applicationContext
     val focus = LocalFocusManager.current
@@ -68,7 +69,7 @@ internal fun RootPicker(
         location = path
     }
     fun toggle(entry: RootEntry) {
-        if (!entry.selectable) return
+        if (!entry.selectable || (directoriesOnly && entry.type != "directory")) return
         limitReached = false
         if (selected.any { it.path == entry.path })
             selected = selected.filterNot { it.path == entry.path }
@@ -216,6 +217,8 @@ internal fun RootPicker(
                 LazyColumn(Modifier.weight(1f), state = listState) {
                     items(page?.entries.orEmpty(), key = { it.key }) { entry ->
                         val checked = selected.any { it.path == entry.path }
+                        val selectable =
+                            entry.selectable && (!directoriesOnly || entry.type == "directory")
                         ListItem(
                             headlineContent = {
                                 Text(entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -254,11 +257,11 @@ internal fun RootPicker(
                             },
                             trailingContent = {
                                 if (selected.isNotEmpty())
-                                    Checkbox(checked, { toggle(entry) }, enabled = entry.selectable)
+                                    Checkbox(checked, { toggle(entry) }, enabled = selectable)
                             },
                             modifier =
                                 Modifier.combinedClickable(
-                                    enabled = !loading,
+                                    enabled = !loading && (entry.directory || selectable),
                                     onClick = {
                                         if (selected.isNotEmpty() && entry.selectable) toggle(entry)
                                         else if (entry.directory) navigate(entry.path)
@@ -298,11 +301,14 @@ internal fun BatchRuleEditor(
     changeTargets: (List<RootEntry>) -> Unit,
     dismiss: () -> Unit,
     busy: Boolean = false,
+    initialFolderAction: RuleAction = RuleAction.FolderTree,
     save: (List<Rule>) -> Unit,
 ) {
-    var emptyOnly by rememberSaveable { mutableStateOf(false) }
+    var folderAction by rememberSaveable { mutableStateOf(initialFolderAction) }
+    val emptyChildren = folderAction == RuleAction.EmptyChildren
+    val emptyOnly = folderAction == RuleAction.EmptyTree
     val result =
-        remember(targets, emptyOnly) { runCatching { rulesForEntries(targets, emptyOnly) } }
+        remember(targets, folderAction) { runCatching { rulesForEntries(targets, folderAction) } }
     val rules = result.getOrNull().orEmpty()
     Dialog(
         { if (!busy) dismiss() },
@@ -342,17 +348,23 @@ internal fun BatchRuleEditor(
                 }
                 if (targets.any { it.type == "directory" })
                     item {
-                        OptionRow(R.string.empty_only, emptyOnly, enabled = !busy) {
-                            emptyOnly = it
-                        }
+                        if (!emptyChildren)
+                            OptionRow(R.string.empty_tree_only, emptyOnly, enabled = !busy) {
+                                folderAction =
+                                    if (it) RuleAction.EmptyTree else RuleAction.FolderTree
+                            }
                         Text(
                             stringResource(
-                                if (emptyOnly) R.string.batch_empty_hint
-                                else R.string.batch_tree_hint
+                                when {
+                                    emptyChildren -> R.string.empty_children_hint
+                                    emptyOnly -> R.string.batch_empty_tree_hint
+                                    else -> R.string.batch_tree_hint
+                                }
                             ),
                             Modifier.animateContentSize(),
                             color =
-                                if (emptyOnly) MaterialTheme.colorScheme.onSurfaceVariant
+                                if (emptyOnly || emptyChildren)
+                                    MaterialTheme.colorScheme.onSurfaceVariant
                                 else MaterialTheme.colorScheme.error,
                             minLines = 3,
                         )

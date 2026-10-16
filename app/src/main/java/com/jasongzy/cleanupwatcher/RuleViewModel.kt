@@ -250,6 +250,9 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun synchronize(response: JSONObject) {
+        check(!needsUpdate(response.opt("versionCode"), mutable.value.requiredBackendVersionCode)) {
+            "update"
+        }
         val rules = mutable.value.rules
         val update =
             withContext(Dispatchers.Default) {
@@ -294,11 +297,12 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         }
         try {
             val status = backend.call("status")
-            if (syncRules) synchronize(status) else accept(status)
+            if (syncRules && !mutable.value.backendNeedsUpdate) synchronize(status)
+            else accept(status)
         } catch (e: Exception) {
             disconnect()
             if (e.message?.substringBefore(':') != "offline") throw e
-            if (syncRules) {
+            if (syncRules && !mutable.value.backendNeedsUpdate) {
                 val encoded = withContext(Dispatchers.Default) { Rule.encode(mutable.value.rules) }
                 val configured = backend.manage("configure", encoded)
                 if (configured.optBoolean("running")) accept(configured)
@@ -306,7 +310,7 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         } finally {
             mutable.value = mutable.value.copy(checked = true)
         }
-        if (syncRules) notify(R.string.rules_synced)
+        if (syncRules && !mutable.value.backendNeedsUpdate) notify(R.string.rules_synced)
     }
 
     fun refresh() = task { refreshState() }
@@ -404,6 +408,7 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun updateRules(next: List<Rule>) {
+        check(!mutable.value.backendNeedsUpdate) { "update" }
         val rules = next.sortedRules()
         val encoded =
             withContext(Dispatchers.Default) {

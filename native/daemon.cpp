@@ -107,7 +107,8 @@ static void record(const Plan &job, const Result &result) {
     auto time =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count();
-    records.push_back(entry + ",\"time\":" + std::to_string(time) + ",\"name\":" + json(job.rule.pattern) + "}");
+    records.push_back(entry + ",\"time\":" + std::to_string(time) +
+                      ",\"name\":" + json(job.rule.action == EmptyChildren ? job.rule.root : job.rule.pattern) + "}");
     if (records.size() > 12)
         records.erase(records.begin());
 }
@@ -195,7 +196,7 @@ static void worker() {
                         try {
                             if (job.root.get() >= 0) {
                                 attach(rule.id, job.root.get(), "");
-                                if (rule.recursive || rule.action != 0)
+                                if (rule.recursive || rule.action != File)
                                     for (const auto &path : job.directories) {
                                         if (!rule.recursive && !matchesName(rule, path.substr(0, path.find('/'))))
                                             continue;
@@ -309,18 +310,23 @@ static void worker() {
                             }
                     }
                     if (directory && !rule.recursive &&
-                        (rule.action == 0 || (watch.path.empty() && !matchesName(rule, name))))
+                        (rule.action == File || (watch.path.empty() && !matchesName(rule, name))))
                         continue;
-                    if (rule.action == 1 && (event->mask & IN_CLOSE_WRITE))
+                    if (rule.action == EmptyTree && (event->mask & IN_CLOSE_WRITE))
                         continue;
-                    if (directory && (event->mask & IN_MOVED_FROM)) {
+                    if (rule.action == EmptyChildren &&
+                        ((watch.path.empty() && !directory) ||
+                         (!watch.path.empty() && !(event->mask & (IN_DELETE | IN_MOVED_FROM)))))
+                        continue;
+                    if (directory && (event->mask & IN_MOVED_FROM) &&
+                        (rule.action != EmptyChildren || watch.path.empty())) {
                         ++revision;
                         continue;
                     }
                     if (directory && (event->mask & (IN_CREATE | IN_MOVED_TO))) {
                         bool targetTree =
-                            rule.action != 0 && matchesName(rule, watch.path.substr(0, watch.path.find('/')));
-                        if (!rule.recursive && !targetTree && (rule.action == 0 || !matchesName(rule, name)))
+                            rule.action != File && matchesName(rule, watch.path.substr(0, watch.path.find('/')));
+                        if (!rule.recursive && !targetTree && (rule.action == File || !matchesName(rule, name)))
                             continue;
                         std::lock_guard planningLock(deletion);
                         auto incoming = plan(rule, path);
@@ -342,13 +348,13 @@ static void worker() {
                         }
                     } else if (!(event->mask & (IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_MOVED_FROM)))
                         continue;
-                    if (rule.action == 1 && (!directory || removed))
+                    if ((rule.action == EmptyTree || rule.action == EmptyChildren) && (!directory || removed))
                         path = watch.path;
                     else if (removed)
                         continue;
-                    if (!directory && rule.action == 0 && !matchesName(rule, name))
+                    if (!directory && rule.action == File && !matchesName(rule, name))
                         continue;
-                    if (rule.action != 0) {
+                    if (rule.action != File) {
                         std::istringstream components(path);
                         std::string part, prefix;
                         bool matched = false;

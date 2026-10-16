@@ -18,7 +18,7 @@
     <string name="pattern">文件名</string>
     <string name="pattern_hint">用 * 匹配任意字符，例如 *.log</string>
     <string name="action_files">文件</string>
-    <string name="action_empty">空文件夹</string>
+    <string name="action_empty_tree">空目录树</string>
     <string name="action_tree">文件夹及内容</string>
     <string name="tree_hint">匹配到的文件夹将连同其中的全部文件和子文件夹一起删除。</string>
     <string name="include_subfolders">包含子文件夹</string>
@@ -116,7 +116,7 @@
     <string name="directory_name">文件夹名</string>
     <string name="directory_hint">填写准确名称，例如 logs</string>
     <string name="tree_name_hint">删除文件夹及内容时按准确名称匹配，例如 logs</string>
-    <string name="empty_only">仅删除空文件夹</string>
+    <string name="empty_tree_only">仅清理空目录树</string>
     <string name="more_options">更多选项</string>
     <string name="scope_direct">监测此文件夹</string>
     <string name="scope_recursive">监测此文件夹及子文件夹</string>
@@ -157,8 +157,8 @@
     <string name="clear_records">清空记录</string>
     <string name="clear_records_confirm">清空最近记录？</string>
     <string name="records_retention">重启后端会清空记录</string>
-    <string name="empty_hint_rule">清理空文件夹，也包括仅由空子文件夹组成的目录树。</string>
-    <string name="batch_empty_hint">所选文件夹的整棵目录树均由空文件夹组成时才清理；选中的文件仍会清理。</string>
+    <string name="empty_tree_hint">匹配的文件夹为空或整棵目录树仅由空文件夹组成时才清理。</string>
+    <string name="batch_empty_tree_hint">所选文件夹为空或整棵目录树仅由空文件夹组成时才清理；选中的文件仍会清理。</string>
     <plurals name="import_confirm"><item quantity="other">导入 %1$d 条规则？</item></plurals>
     <string name="import_append">追加</string>
     <string name="import_replace">覆盖</string>
@@ -191,4 +191,8 @@
     <string name="boot_managed_by_magisk">开机启动由 Magisk 模块管理</string>
     <string name="cleanup_finished">清理已完成</string>
     <string name="recovery_finished">恢复已完成</string>
+    <string name="target_empty_children">空子目录</string>
+    <string name="action_empty_children">一级空子目录</string>
+    <string name="empty_children_hint">清理监测目录下实际为空的一级子目录，保留监测目录本身。</string>
+    <string name="error_backend_update">请先更新后端。</string>
 </resources>

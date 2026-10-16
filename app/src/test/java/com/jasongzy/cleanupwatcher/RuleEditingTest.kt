@@ -35,7 +35,12 @@ class RuleEditingTest {
             listOf(
                 Rule(root = "/sdcard/Z", pattern = "a.log"),
                 Rule(root = "/sdcard/A", pattern = "z.log"),
-                Rule(root = "/sdcard/A", pattern = "a.log", action = 2, literal = true),
+                Rule(
+                    root = "/sdcard/A",
+                    pattern = "a.log",
+                    action = RuleAction.FolderTree,
+                    literal = true,
+                ),
                 Rule(root = "/sdcard/A", pattern = "a.log", enabled = true),
             )
         val expected = listOf(rules[3], rules[2], rules[1], rules[0])
