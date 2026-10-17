@@ -569,26 +569,28 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                             modifier =
                                 Modifier.clickable(role = Role.Button) { recordDetails = record },
                             headlineContent = {
-                                Text(record.name)
+                                Text(record.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             },
                             supportingContent = {
                                 Column {
+                                    Text(
+                                        record.root,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
                                     Text(
                                         pluralStringResource(
                                             R.plurals.cleaned,
                                             record.deleted,
                                             record.deleted,
-                                        )
+                                        ) + " · " + formatTimestamp(record.time),
+                                        style = MaterialTheme.typography.bodySmall,
                                     )
                                     if (error.isNotEmpty())
                                         Text(
                                             errorText(error),
                                             color = MaterialTheme.colorScheme.error,
                                         )
-                                    Text(
-                                        formatTimestamp(record.time),
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
                                 }
                             },
                         )
@@ -838,6 +840,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     item { Text(formatTimestamp(record.time)) }
+                    item { Text(record.name, style = MaterialTheme.typography.titleMedium) }
                     item { Text(record.root, style = MaterialTheme.typography.bodyMedium) }
                     if (record.error.isNotEmpty())
                         item {

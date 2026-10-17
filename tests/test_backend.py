@@ -196,6 +196,9 @@ def check_empty_children(binary: str, env: dict, root: str):
     assert os.path.exists(incoming) and os.path.exists(scope)
     write_file(os.path.join(scope, "keep.log"))
     assert invoke(binary, env, "preview", "test")["paths"] == []
+    records = [entry for entry in invoke(binary, env, "status")["records"] if entry["root"] == scope]
+    assert records and all(entry["name"] == "*" for entry in records)
+    assert any("Empty" in entry["paths"] for entry in records)
     invoke(binary, env, "rules", "CW\n")
 
 

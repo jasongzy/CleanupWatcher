@@ -115,8 +115,8 @@ static void record(const Plan &job, const Result &result) {
     auto entry = resultJson(job, result, true);
     entry.pop_back();
     auto time = wallMillis();
-    records.push_back({time, entry + ",\"time\":" + std::to_string(time) + ",\"name\":" +
-                                 json(job.rule.action == EmptyChildren ? job.rule.root : job.rule.pattern) + "}"});
+    records.push_back(
+        {time, entry + ",\"time\":" + std::to_string(time) + ",\"name\":" + json(job.rule.pattern) + "}"});
     trimRecords(records, time);
 }
 static std::string status() {
