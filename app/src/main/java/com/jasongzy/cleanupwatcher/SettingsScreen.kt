@@ -1,5 +1,6 @@
 package com.jasongzy.cleanupwatcher
 
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
@@ -11,6 +12,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -22,6 +25,8 @@ import androidx.core.os.LocaleListCompat
 internal fun SettingsScreen(state: UiState, model: RuleViewModel, dismiss: () -> Unit) {
     var language by rememberSaveable { mutableStateOf(false) }
     var colors by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val importer =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri?.let(model::readImport)
@@ -79,6 +84,17 @@ internal fun SettingsScreen(state: UiState, model: RuleViewModel, dismiss: () ->
                 exporter.launch("cleanupwatcher-rules.json")
             }
             HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 16.dp))
+            SettingsItem(
+                R.drawable.ic_open_in_new,
+                R.string.github,
+                stringResource(R.string.github_description),
+            ) {
+                try {
+                    uriHandler.openUri("https://github.com/jasongzy/CleanupWatcher")
+                } catch (_: IllegalArgumentException) {
+                    Toast.makeText(context, R.string.error_open_link, Toast.LENGTH_SHORT).show()
+                }
+            }
             ListItem(
                 headlineContent = { Text(stringResource(R.string.version)) },
                 supportingContent = {
