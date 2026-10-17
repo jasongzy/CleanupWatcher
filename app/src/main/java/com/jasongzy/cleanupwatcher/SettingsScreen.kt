@@ -15,8 +15,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.os.LocaleListCompat
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,65 +32,60 @@ internal fun SettingsScreen(state: UiState, model: RuleViewModel, dismiss: () ->
         ) { uri ->
             uri?.let(model::exportRules)
         }
-    Dialog(
-        dismiss,
-        properties =
-            DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.settings)) },
-                    navigationIcon = {
-                        ToolButton(R.drawable.ic_back, R.string.close, action = dismiss)
-                    },
-                )
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.settings)) },
+                navigationIcon = {
+                    ToolButton(R.drawable.ic_back, R.string.close, action = dismiss)
+                },
+            )
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
+            val locale = AppCompatDelegate.getApplicationLocales().toLanguageTags()
+            SettingsItem(
+                R.drawable.ic_language,
+                R.string.language,
+                stringResource(
+                    when {
+                        locale.startsWith("zh") -> R.string.chinese
+                        locale.startsWith("en") -> R.string.english
+                        else -> R.string.system_default
+                    }
+                ),
+            ) {
+                language = true
             }
-        ) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
-                val locale = AppCompatDelegate.getApplicationLocales().toLanguageTags()
-                SettingsItem(
-                    R.drawable.ic_language,
-                    R.string.language,
-                    stringResource(
-                        when {
-                            locale.startsWith("zh") -> R.string.chinese
-                            locale.startsWith("en") -> R.string.english
-                            else -> R.string.system_default
-                        }
-                    ),
-                ) {
-                    language = true
-                }
-                SettingsItem(
-                    R.drawable.ic_theme,
-                    R.string.color_mode,
-                    stringResource(
-                        when (state.colorMode) {
-                            "light" -> R.string.theme_light
-                            "dark" -> R.string.theme_dark
-                            else -> R.string.system_default
-                        }
-                    ),
-                ) {
-                    colors = true
-                }
-                HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 16.dp))
-                SettingsItem(R.drawable.ic_import, R.string.import_rules, enabled = !state.busy) {
-                    importer.launch(arrayOf("application/json"))
-                }
-                SettingsItem(R.drawable.ic_export, R.string.export_rules, enabled = !state.busy) {
-                    exporter.launch("cleanupwatcher-rules.json")
-                }
-                HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 16.dp))
-                ListItem(
-                    headlineContent = { Text(stringResource(R.string.version)) },
-                    supportingContent = {
-                        Text("${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-                    },
-                    leadingContent = { Icon(painterResource(R.drawable.ic_info), null) },
-                )
+            SettingsItem(
+                R.drawable.ic_theme,
+                R.string.color_mode,
+                stringResource(
+                    when (state.colorMode) {
+                        "light" -> R.string.theme_light
+                        "dark" -> R.string.theme_dark
+                        else -> R.string.system_default
+                    }
+                ),
+            ) {
+                colors = true
             }
+            HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 16.dp))
+            SettingsItem(R.drawable.ic_import, R.string.import_rules, enabled = !state.busy) {
+                importer.launch(arrayOf("application/json"))
+            }
+            SettingsItem(R.drawable.ic_export, R.string.export_rules, enabled = !state.busy) {
+                exporter.launch("cleanupwatcher-rules.json")
+            }
+            HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 16.dp))
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.version)) },
+                supportingContent = {
+                    Text("${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                },
+                leadingContent = { Icon(painterResource(R.drawable.ic_info), null) },
+            )
         }
     }
     if (language) {
