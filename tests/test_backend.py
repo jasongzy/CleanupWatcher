@@ -197,7 +197,7 @@ def check_empty_children(binary: str, env: dict, root: str):
     write_file(os.path.join(scope, "keep.log"))
     assert invoke(binary, env, "preview", "test")["paths"] == []
     records = [entry for entry in invoke(binary, env, "status")["records"] if entry["root"] == scope]
-    assert records and all(entry["name"] == "*" for entry in records)
+    assert records and all(entry["name"] == "*" and entry["id"] == "test" for entry in records)
     assert any("Empty" in entry["paths"] for entry in records)
     invoke(binary, env, "rules", "CW\n")
 
@@ -261,6 +261,7 @@ if __name__ == "__main__":
         snapshot = invoke(binary, env, "status")
         assert 0 < snapshot["records"][-1]["time"] <= int(time.time() * 1000) + 1000
         assert snapshot["records"][-1]["name"] == "*.log"
+        assert snapshot["records"][-1]["id"] == "test"
         assert snapshot["records"][-1]["root"] == folder
         assert snapshot["records"][-1]["paths"] == ["event.log"]
         cleared = invoke(binary, env, "clear-records")

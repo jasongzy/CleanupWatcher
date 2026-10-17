@@ -44,6 +44,8 @@
     <string name="clean_confirm">Permanently delete these matching items?</string>
     <plurals name="cleaned"><item quantity="one">%1$d item cleaned</item><item quantity="other">%1$d items cleaned</item></plurals>
     <string name="recent_records">Recent records</string>
+    <string name="locate_rule">Locate rule</string>
+    <string name="record_rule_missing">The corresponding rule no longer exists.</string>
     <string name="more">More actions</string>
     <string name="language">Language</string>
     <string name="system_default">System default</string>

@@ -42,6 +42,7 @@ data class CleanupResult(
 }
 
 data class RecentRecord(
+    val ruleId: String,
     val time: Long,
     val name: String,
     val root: String,
@@ -61,6 +62,7 @@ data class RecentRecord(
             val result = CleanupResult.decode(value)
             require(result.paths.size == result.deleted) { "config" }
             return RecentRecord(
+                result.id,
                 value.getLong("time"),
                 value.get("name") as? String ?: error("config"),
                 result.root,

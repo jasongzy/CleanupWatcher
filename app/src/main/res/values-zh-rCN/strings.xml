@@ -44,6 +44,8 @@
     <string name="clean_confirm">永久删除这些匹配的项目？</string>
     <plurals name="cleaned"><item quantity="other">已清理 %1$d 个项目</item></plurals>
     <string name="recent_records">最近记录</string>
+    <string name="locate_rule">定位规则</string>
+    <string name="record_rule_missing">对应规则已不存在。</string>
     <string name="more">更多操作</string>
     <string name="language">语言</string>
     <string name="system_default">跟随系统</string>

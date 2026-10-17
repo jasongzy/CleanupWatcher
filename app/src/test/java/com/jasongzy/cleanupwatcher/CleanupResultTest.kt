@@ -27,6 +27,7 @@ class CleanupResultTest {
         assertEquals(1, CleanupResult.decode(recovery).restored)
         val record =
             RecentRecord.decode(response().put("time", 123L).put("name", "*.log").put("deleted", 1))
+        assertEquals("rule", record.ruleId)
         assertEquals(123L, record.time)
         assertEquals("*.log", record.name)
         assertEquals("/sdcard/Logs", record.root)

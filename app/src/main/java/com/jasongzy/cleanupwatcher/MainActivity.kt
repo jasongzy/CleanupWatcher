@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -36,6 +37,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+private const val RULE_HEADER_ITEMS = 4 // Progress, backend, module, and rules heading.
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -181,6 +187,9 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
     var removing by remember { mutableStateOf<Rule?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var locateJob by remember { mutableStateOf<Job?>(null) }
+    var highlightedRule by remember { mutableStateOf<String?>(null) }
     var selected by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var removingBatch by rememberSaveable { mutableStateOf(false) }
     var clearingRecords by rememberSaveable { mutableStateOf(false) }
@@ -529,6 +538,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                         state.connected && !state.busy,
                         state.health[rule.id].orEmpty(),
                         selected = rule.id in selected,
+                        highlighted = rule.id == highlightedRule,
                         selecting = selected.isNotEmpty(),
                         select = { toggleSelection(rule.id) },
                         edit = { editor = rule },
@@ -858,6 +868,37 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                 }
             },
             confirmButton = {
+                TextButton(
+                    onClick = {
+                        val index = state.rules.indexOfFirst { it.id == record.ruleId }
+                        if (index < 0) {
+                            Toast.makeText(
+                                    context,
+                                    R.string.record_rule_missing,
+                                    Toast.LENGTH_SHORT,
+                                )
+                                .show()
+                        } else {
+                            locateJob?.cancel()
+                            highlightedRule = null
+                            selected = emptyList()
+                            recordDetails = null
+                            locateJob = scope.launch {
+                                listState.animateScrollToItem(
+                                    RULE_HEADER_ITEMS + index + if (state.cleaning) 1 else 0
+                                )
+                                highlightedRule = record.ruleId
+                                delay(2000)
+                                highlightedRule = null
+                            }
+                        }
+                    },
+                    enabled = !state.busy,
+                ) {
+                    Text(stringResource(R.string.locate_rule))
+                }
+            },
+            dismissButton = {
                 TextButton({ recordDetails = null }) { Text(stringResource(R.string.close)) }
             },
         )
@@ -907,6 +948,7 @@ private fun RuleCard(
     canClean: Boolean,
     health: String,
     selected: Boolean,
+    highlighted: Boolean,
     selecting: Boolean,
     select: () -> Unit,
     edit: () -> Unit,
@@ -915,6 +957,12 @@ private fun RuleCard(
     enable: (Boolean) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    val containerColor by
+        animateColorAsState(
+            if (selected || highlighted) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.surface,
+            label = "ruleHighlight",
+        )
     OutlinedCard(
         Modifier.fillMaxWidth()
             .combinedClickable(
@@ -922,12 +970,7 @@ private fun RuleCard(
                 onClick = if (selecting) select else edit,
                 onLongClick = select,
             ),
-        colors =
-            CardDefaults.outlinedCardColors(
-                containerColor =
-                    if (selected) MaterialTheme.colorScheme.secondaryContainer
-                    else MaterialTheme.colorScheme.surface
-            ),
+        colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
     ) {
         Column(
             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
