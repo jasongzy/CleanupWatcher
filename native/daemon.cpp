@@ -123,7 +123,7 @@ static std::string status() {
     std::lock_guard lock(mutex);
     trimRecords(records, wallMillis());
     std::string out =
-        "{\"versionName\":" + json(BACKEND_VERSION_NAME) + ",\"versionCode\":" + std::to_string(BACKEND_VERSION_CODE) +
+        "{\"versionCode\":" + std::to_string(BACKEND_VERSION_CODE) +
         ",\"running\":true,\"paused\":" + std::string(paused ? "true" : "false") +
         ",\"boot\":" + (load("boot", "0") == "1" ? "true" : "false") + ",\"watches\":" + std::to_string(watchCount) +
         ",\"rules\":" + json(encodeRules(rules)) + ",\"records\":[";
@@ -704,8 +704,7 @@ int main(int argc, char **argv) {
             throw std::runtime_error("root");
         std::string verb = argv[1];
         if (verb == "version") {
-            std::cout << "{\"versionName\":" << json(BACKEND_VERSION_NAME)
-                      << ",\"versionCode\":" << BACKEND_VERSION_CODE << "}\n";
+            std::cout << "{\"versionCode\":" << BACKEND_VERSION_CODE << "}\n";
         } else if (verb == "browse") {
             if (!std::setlocale(LC_CTYPE, "C.UTF-8"))
                 throw std::runtime_error("list");

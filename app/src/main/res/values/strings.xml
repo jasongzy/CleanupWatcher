@@ -147,7 +147,7 @@
     <string name="github_description">github.com/jasongzy/CleanupWatcher</string>
     <string name="error_open_link">No app available to open this link.</string>
     <string name="version">Version</string>
-    <string name="version_code">Version code %1$d</string>
+    <string name="version_code">v%1$d</string>
     <string name="version_unknown">Unknown version</string>
     <string name="import_rules">Import rules</string>
     <string name="export_rules">Export rules</string>

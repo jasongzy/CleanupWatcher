@@ -13,7 +13,7 @@ internal fun needsUpdate(version: Any?, required: Int): Boolean =
 
 data class ComponentVersion(val name: String? = null, val code: Int? = null) {
     companion object {
-        fun decode(name: Any?, code: Any?) =
+        fun decode(name: Any? = null, code: Any?) =
             ComponentVersion(
                 (name as? String)?.takeIf {
                     it.isNotBlank() && it.length <= 64 && it.none(Char::isISOControl)
@@ -78,7 +78,6 @@ class Backend(private val context: Context) {
                                 null
                             }
                         } else null
-                    response.put("backendVersionName", version?.opt("versionName"))
                     response.put("backendVersionCode", version?.opt("versionCode"))
                     response.put(
                         "backendNeedsUpdate",

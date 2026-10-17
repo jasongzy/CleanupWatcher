@@ -102,8 +102,9 @@ if __name__ == "__main__":
         metadata = manage(binary, env, "inspect", "1")
         assert metadata["moduleVersionCode"] == metadata["requiredModuleVersionCode"] == 1
         assert metadata["moduleVersionName"] == "v1.0"
-        assert manage(binary, env, "version")["versionName"] == "1.1.0"
-        assert metadata["requiredBackendVersionCode"] == manage(binary, env, "version")["versionCode"] == 2
+        version = manage(binary, env, "version")
+        assert version == {"versionCode": 3}
+        assert metadata["requiredBackendVersionCode"] == version["versionCode"]
         properties = os.path.join(module, "module.prop")
         with open(properties, encoding="utf-8") as stream:
             original = stream.read()
@@ -130,7 +131,7 @@ if __name__ == "__main__":
         manage(binary, env, "install")
         installed = os.path.join(home, "cleanupwatcherd")
         assert os.access(installed, os.X_OK)
-        assert manage(installed, env, "version")["versionCode"] == metadata["requiredBackendVersionCode"]
+        assert manage(installed, env, "version") == version
         with open(binary, "rb") as source, open(installed, "rb") as target:
             assert source.read() == target.read()
         os.mkdir(scope)
@@ -142,9 +143,10 @@ if __name__ == "__main__":
         manage(binary, env, "start")
         wait_for(lambda: os.path.exists(os.path.join(home, "control.sock")))
         first_pid = daemon_pid(home)
-        assert invoke(binary, env, "status")["versionCode"] == metadata["requiredBackendVersionCode"]
-        assert invoke(binary, env, "status")["versionName"] == "1.1.0"
-        assert invoke(binary, env, "status")["rules"] == initial
+        status = invoke(binary, env, "status")
+        assert status["versionCode"] == metadata["requiredBackendVersionCode"]
+        assert "versionName" not in status
+        assert status["rules"] == initial
         changed = config(scope, pattern="*.log")
         assert manage(binary, env, "configure", input=changed)["rules"] == changed
         for _ in range(3):

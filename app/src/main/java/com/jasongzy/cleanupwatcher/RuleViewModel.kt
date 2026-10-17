@@ -200,11 +200,7 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         mutable.value =
             mutable.value.copy(
                 connected = true,
-                backendVersion =
-                    ComponentVersion.decode(
-                        response.opt("versionName"),
-                        response.opt("versionCode"),
-                    ),
+                backendVersion = ComponentVersion.decode(code = response.opt("versionCode")),
                 backendNeedsUpdate =
                     mutable.value.backendNeedsUpdate ||
                         needsUpdate(
@@ -274,11 +270,7 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
                 requiredBackendVersionCode = system.getInt("requiredBackendVersionCode"),
                 backendNeedsUpdate = system.getBoolean("backendNeedsUpdate"),
                 moduleNeedsUpdate = system.getBoolean("moduleNeedsUpdate"),
-                backendVersion =
-                    ComponentVersion.decode(
-                        system.opt("backendVersionName"),
-                        system.opt("backendVersionCode"),
-                    ),
+                backendVersion = ComponentVersion.decode(code = system.opt("backendVersionCode")),
                 moduleVersion =
                     ComponentVersion.decode(
                         system.opt("moduleVersionName"),

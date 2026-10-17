@@ -2,9 +2,8 @@
 #include "core.h"
 
 namespace cw {
-inline constexpr int BACKEND_VERSION_CODE = 2;
+inline constexpr int BACKEND_VERSION_CODE = 3;
 inline constexpr int MODULE_VERSION_CODE = 1;
-inline constexpr char BACKEND_VERSION_NAME[] = "1.1.0";
 inline constexpr char MODULE_VERSION_NAME[] = "v1.0";
 extern const char *HOME;
 extern const char *SOCKET;

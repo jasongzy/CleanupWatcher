@@ -8,7 +8,7 @@ class BackendStatusTest {
     fun componentVersionsKeepActualNamesAndValidateDisplayValues() {
         assertEquals(ComponentVersion("1.0.0", 1), ComponentVersion.decode("1.0.0", 1))
         assertEquals(ComponentVersion("v1.0", 1), ComponentVersion.decode("v1.0", 1))
-        assertEquals(ComponentVersion(code = 2), ComponentVersion.decode(null, 2))
+        assertEquals(ComponentVersion(code = 3), ComponentVersion.decode(code = 3))
         assertEquals(ComponentVersion(name = "v0.9"), ComponentVersion.decode("v0.9", null))
         for (name in listOf(null, "", " ", "v1\n", "x".repeat(65), 1)) {
             assertNull(ComponentVersion.decode(name, 1).name)
@@ -26,6 +26,8 @@ class BackendStatusTest {
         assertTrue(needsUpdate(1, 2))
         assertFalse(needsUpdate(1, 1))
         assertFalse(needsUpdate(2, 1))
+        assertTrue(needsUpdate(2, 3))
+        assertFalse(needsUpdate(3, 3))
     }
 
     @Test
