@@ -1,6 +1,11 @@
 package com.jasongzy.cleanupwatcher
 
 import java.io.File
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -16,7 +21,13 @@ class RootProcessTest {
         listOf(
             File(System.getProperty("java.home"), "bin/java").path,
             "-cp",
-            File(ProcessFixture::class.java.protectionDomain.codeSource.location.toURI()).path,
+            File(
+                    requireNotNull(ProcessFixture::class.java.protectionDomain)
+                        .codeSource
+                        .location
+                        .toURI()
+                )
+                .path,
             ProcessFixture::class.java.name,
             mode,
         )
@@ -45,5 +56,29 @@ class RootProcessTest {
                 runProcess(command("flood"), timeoutMillis = 5_000)
             }
         assertEquals("limit", error.message)
+    }
+
+    @Test
+    fun streamingDecodesUtf8BeforeProcessExitAndCancels() = runBlocking {
+        val line = withTimeout(5_000) { streamProcess(command("stream")).first() }
+        assertTrue(line.startsWith("测试:"))
+        val pid = line.substringAfter(':').toLong()
+        withTimeout(5_000) {
+            while (ProcessHandle.of(pid).map { it.isAlive }.orElse(false)) delay(10)
+        }
+    }
+
+    @Test
+    fun streamingRejectsOversizedAndMalformedMessages() {
+        for ((mode, expected) in listOf("flood" to "limit", "invalid" to "offline")) {
+            val error =
+                assertThrows(IllegalStateException::class.java) {
+                    runBlocking { withTimeout(5_000) { streamProcess(command(mode)).collect() } }
+                }
+            assertEquals(expected, error.message)
+        }
+        assertThrows(java.nio.charset.CharacterCodingException::class.java) {
+            runBlocking { withTimeout(5_000) { streamProcess(command("invalid-line")).collect() } }
+        }
     }
 }

@@ -186,6 +186,11 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
     var editor by rememberSaveable(stateSaver = editorSaver) { mutableStateOf<Rule?>(null) }
     var removing by remember { mutableStateOf<Rule?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(model, owner, settings) {
+        if (!settings) {
+            owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { model.observe() }
+        }
+    }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var locateJob by remember { mutableStateOf<Job?>(null) }

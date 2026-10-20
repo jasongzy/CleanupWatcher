@@ -50,6 +50,25 @@ static constexpr long long STABLE_RUNTIME_MS = 5000;
 static constexpr long long STABLE_RUNTIME_MS = 5 * 60 * 1000;
 #endif
 static int clients = 0, waiters = 0;
+static uint64_t stateSequence = 1;
+static std::vector<int> subscribers;
+// Called with mutex held; eventfd coalesces notifications without blocking cleanup.
+static void stateChanged() {
+    ++stateSequence;
+    uint64_t one = 1;
+    for (int fd : subscribers) {
+        while (write(fd, &one, sizeof(one)) < 0 && errno == EINTR) {
+        }
+    }
+}
+static void setHealth(const std::string &id, const std::string &error) {
+    std::lock_guard lock(mutex);
+    auto found = health.find(id);
+    if (found == health.end() || found->second != error) {
+        health[id] = error;
+        stateChanged();
+    }
+}
 struct WaitSlot {
     WaitSlot(const WaitSlot &) = delete;
     WaitSlot &operator=(const WaitSlot &) = delete;
@@ -118,12 +137,13 @@ static void record(const Plan &job, const Result &result) {
     records.push_back(
         {time, entry + ",\"time\":" + std::to_string(time) + ",\"name\":" + json(job.rule.pattern) + "}"});
     trimRecords(records, time);
+    stateChanged();
 }
 static std::string status() {
     std::lock_guard lock(mutex);
     trimRecords(records, wallMillis());
     std::string out =
-        "{\"versionCode\":" + std::to_string(BACKEND_VERSION_CODE) +
+        "{\"sequence\":" + std::to_string(stateSequence) + ",\"versionCode\":" + std::to_string(BACKEND_VERSION_CODE) +
         ",\"running\":true,\"paused\":" + std::string(paused ? "true" : "false") +
         ",\"boot\":" + (load("boot", "0") == "1" ? "true" : "false") + ",\"watches\":" + std::to_string(watchCount) +
         ",\"rules\":" + json(encodeRules(rules)) + ",\"records\":[";
@@ -141,6 +161,115 @@ static std::string status() {
         out += json(id) + ":" + json(error);
     }
     return out + "}}";
+}
+static void sendStatus(int client, const std::string &value) {
+    size_t offset = 0;
+    auto deadline = millis() + 3000;
+    while (offset < value.size() && !stopping) {
+        auto size = send(client, value.data() + offset, value.size() - offset, MSG_DONTWAIT | MSG_NOSIGNAL);
+        if (size > 0) {
+            offset += size;
+            continue;
+        }
+        if (size < 0 && errno == EINTR)
+            continue;
+        if (size >= 0 || errno != EAGAIN)
+            throw std::runtime_error("write");
+        auto remaining = deadline - millis();
+        if (remaining <= 0)
+            throw std::runtime_error("timeout");
+        struct pollfd writable{client, POLLOUT, 0};
+        if (poll(&writable, 1, static_cast<int>(remaining)) < 0 && errno != EINTR)
+            throw std::runtime_error("write");
+    }
+}
+static void observe(int client) {
+    WaitSlot waiting;
+    struct Subscription {
+        Fd signal{eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)};
+        Subscription() {
+            if (signal.get() < 0)
+                throw std::runtime_error("watch");
+            std::lock_guard lock(mutex);
+            subscribers.push_back(signal.get());
+        }
+        ~Subscription() {
+            std::lock_guard lock(mutex);
+            std::erase(subscribers, signal.get());
+        }
+    } subscription;
+    bool dirty = true;
+    long long next = 0;
+    while (!stopping) {
+        int timeout = dirty ? static_cast<int>(std::max(0LL, next - millis())) : -1;
+        struct pollfd fds[]{{subscription.signal.get(), POLLIN, 0}, {client, 0, 0}};
+        if (poll(fds, 2, timeout) < 0) {
+            if (errno == EINTR)
+                continue;
+            throw std::runtime_error("read");
+        }
+        if (fds[1].revents || stopping)
+            return;
+        if (fds[0].revents) {
+            uint64_t value;
+            if (read(subscription.signal.get(), &value, sizeof(value)) < 0 && errno != EAGAIN)
+                throw std::runtime_error("read");
+            dirty = true;
+        }
+        if (dirty && millis() >= next) {
+            try {
+                sendStatus(client, status() + "\n");
+            } catch (const std::exception &) {
+                // A partial snapshot must end with EOF, not an error appended to its JSON.
+                return;
+            }
+            dirty = false;
+            next = millis() + 250;
+        }
+    }
+}
+static void relayStatus() {
+    auto fd = connectServer();
+    writeFull(fd.get(), "observe\n");
+    shutdown(fd.get(), SHUT_WR);
+    int flags = fcntl(STDOUT_FILENO, F_GETFL);
+    if (flags < 0 || fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK) < 0)
+        throw std::runtime_error("write");
+    std::string pending;
+    size_t offset = 0;
+    while (true) {
+        struct pollfd fds[]{{pending.empty() ? fd.get() : -1, POLLIN, 0},
+                            {STDIN_FILENO, POLLIN, 0},
+                            {pending.empty() ? -1 : STDOUT_FILENO, POLLOUT, 0}};
+        if (poll(fds, 3, -1) < 0) {
+            if (errno == EINTR)
+                continue;
+            throw std::runtime_error("read");
+        }
+        if (fds[1].revents)
+            return;
+        if (fds[2].revents && !pending.empty()) {
+            auto size = write(STDOUT_FILENO, pending.data() + offset, pending.size() - offset);
+            if (size < 0 && errno != EAGAIN && errno != EINTR)
+                throw std::runtime_error("write");
+            if (size > 0) {
+                offset += size;
+                if (offset == pending.size()) {
+                    pending.clear();
+                    offset = 0;
+                }
+            }
+        }
+        if (fds[0].revents && pending.empty()) {
+            char buffer[16384];
+            auto size = read(fd.get(), buffer, sizeof(buffer));
+            if (size < 0 && errno == EINTR)
+                continue;
+            if (size <= 0)
+                return;
+            pending.assign(buffer, size);
+        }
+    }
 }
 struct Watch {
     std::string id, path;
@@ -172,7 +301,6 @@ static void worker() {
         if (std::none_of(contexts.begin(), contexts.end(),
                          [&](const Watch &w) { return w.id == id && w.path == path && w.ancestor == ancestor; }))
             contexts.push_back({id, path, ancestor});
-        watchCount = static_cast<unsigned>(watches.size());
     };
     while (!stopping) {
         if (version != revision) {
@@ -189,6 +317,8 @@ static void worker() {
                 std::lock_guard lock(mutex);
                 snapshot = rules;
                 health.clear();
+                watchCount = 0;
+                stateChanged();
             }
             std::erase_if(budgets, [&](const auto &entry) {
                 return std::none_of(snapshot.begin(), snapshot.end(),
@@ -224,10 +354,7 @@ static void worker() {
                                     }
                                 }
                             }
-                            {
-                                std::lock_guard lock(mutex);
-                                health[rule.id] = job.error;
-                            }
+                            setHealth(rule.id, job.error);
                             if (!job.error.empty())
                                 record(job, {0, job.error});
                             else {
@@ -235,17 +362,15 @@ static void worker() {
                                 pending.push_back({rule.id, "", millis() + 1500});
                             }
                         } catch (const std::exception &e) {
-                            {
-                                std::lock_guard lock(mutex);
-                                health[rule.id] = e.what();
-                            }
+                            setHealth(rule.id, e.what());
                             record(job, {0, e.what()});
                         }
                     }
-            watchCount = static_cast<unsigned>(watches.size());
             {
                 std::lock_guard lock(mutex);
+                watchCount = static_cast<unsigned>(watches.size());
                 watchRevision = version;
+                stateChanged();
             }
             watchReady.notify_all();
         }
@@ -346,10 +471,7 @@ static void worker() {
                                 attach(rule.id, dir.get(), relative);
                             }
                         } catch (const std::exception &e) {
-                            {
-                                std::lock_guard lock(mutex);
-                                health[rule.id] = e.what();
-                            }
+                            setHealth(rule.id, e.what());
                             record(incoming, {0, e.what()});
                             rebuildDue = millis() + 1500;
                             continue;
@@ -387,6 +509,11 @@ static void worker() {
                         ++revision;
                 }
             }
+            if (watchCount != watches.size()) {
+                std::lock_guard lock(mutex);
+                watchCount = static_cast<unsigned>(watches.size());
+                stateChanged();
+            }
         }
         if (rebuildDue >= 0 && millis() >= rebuildDue) {
             ++revision;
@@ -422,20 +549,14 @@ static void worker() {
             if (!job.items.empty() && budget.second + static_cast<int>(job.items.size()) > 512) {
                 if (budget.second <= 512)
                     record(job, {0, "rate"});
-                {
-                    std::lock_guard lock(mutex);
-                    health[rule.id] = "rate";
-                }
+                setHealth(rule.id, "rate");
                 budget.second = 513;
                 pending.push_back({task.id, task.path, budget.first + 60000});
                 continue;
             }
             auto result = execute(job, [&] { return !stopping && !paused && revision == version; });
             budget.second += result.deleted;
-            {
-                std::lock_guard lock(mutex);
-                health[rule.id] = result.error.empty() && budget.second > 512 ? "rate" : result.error;
-            }
+            setHealth(rule.id, result.error.empty() && budget.second > 512 ? "rate" : result.error);
             if (result.deleted || !result.error.empty())
                 record(job, result);
         }
@@ -461,6 +582,7 @@ static std::string command(const std::string &request) {
         {
             std::lock_guard lock(mutex);
             records.clear();
+            stateChanged();
         }
         return status();
     }
@@ -474,6 +596,7 @@ static std::string command(const std::string &request) {
             rules = std::move(next);
             ++policyRevision;
             ++revision;
+            stateChanged();
         }
         notify();
         return status();
@@ -501,6 +624,7 @@ static std::string command(const std::string &request) {
                 ++policyRevision;
                 save("paused", "1");
                 ++revision;
+                stateChanged();
             }
             notify();
             std::lock_guard lock(deletion);
@@ -531,6 +655,7 @@ static std::string command(const std::string &request) {
                 paused = pause;
             }
             ++revision;
+            stateChanged();
         }
         notify();
         {
@@ -544,6 +669,7 @@ static std::string command(const std::string &request) {
         {
             std::lock_guard lock(mutex);
             save("boot", payload);
+            stateChanged();
         }
         return status();
     }
@@ -551,6 +677,7 @@ static std::string command(const std::string &request) {
         {
             std::lock_guard lock(mutex);
             stopping = true;
+            stateChanged();
         }
         watchReady.notify_all();
         ++policyRevision;
@@ -665,7 +792,10 @@ static void serve() {
         std::thread([client = std::move(client)] {
             try {
                 auto request = readFull(client.get(), 128 * 1024 + 32);
-                writeFull(client.get(), command(request) + "\n");
+                if (request == "observe\n")
+                    observe(client.get());
+                else
+                    writeFull(client.get(), command(request) + "\n");
             } catch (const std::exception &e) {
                 try {
                     writeFull(client.get(), "{\"error\":" + json(e.what()) + "}\n");
@@ -682,6 +812,7 @@ static void serve() {
     {
         std::lock_guard lock(mutex);
         stopping = true;
+        stateChanged();
     }
     watchReady.notify_all();
     if (storageChild > 0) {
@@ -788,7 +919,9 @@ int main(int argc, char **argv) {
                 }
                 std::cout << "{\"starting\":true}\n";
             }
-        } else if (verb == "ctl" && argc == 3) {
+        } else if (verb == "observe")
+            relayStatus();
+        else if (verb == "ctl" && argc == 3) {
             auto fd = connectServer();
             writeFull(fd.get(), std::string(argv[2]) + "\n" + readFull(STDIN_FILENO, 128 * 1024));
             shutdown(fd.get(), SHUT_WR);

@@ -103,7 +103,7 @@ if __name__ == "__main__":
         assert metadata["moduleVersionCode"] == metadata["requiredModuleVersionCode"] == 1
         assert metadata["moduleVersionName"] == "v1.0"
         version = manage(binary, env, "version")
-        assert version == {"versionCode": 4}
+        assert version == {"versionCode": 5}
         assert metadata["requiredBackendVersionCode"] == version["versionCode"]
         properties = os.path.join(module, "module.prop")
         with open(properties, encoding="utf-8") as stream:

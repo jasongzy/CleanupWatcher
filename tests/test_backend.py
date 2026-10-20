@@ -1,6 +1,7 @@
 import json
 import os
 import resource
+import select
 import shutil
 import socket
 import subprocess
@@ -56,6 +57,120 @@ def write_file(path: str, content: str = "sample"):
 
 def restrict_descriptors():
     resource.setrlimit(resource.RLIMIT_NOFILE, (9, 9))
+
+
+def subscribe(env: dict):
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(8)
+    client.connect(os.path.join(env["CW_TEST_HOME"], "control.sock"))
+    client.sendall(b"observe\n")
+    client.shutdown(socket.SHUT_WR)
+    return client
+
+
+def thread_count(pid: int) -> int:
+    with open(f"/proc/{pid}/status", encoding="utf-8") as stream:
+        return next(int(line.split()[1]) for line in stream if line.startswith("Threads:"))
+
+
+def check_status_subscription(binary: str, env: dict, root: str, pid: int):
+    invoke(binary, env, "rules", "CW\n")
+    invoke(binary, env, "settled")
+    wait_for(lambda: thread_count(pid) == 2)
+    for _ in range(12):
+        with subscribe(env) as client, client.makefile("r", encoding="utf-8") as stream:
+            initial = json.loads(stream.readline())
+            assert initial["watches"] == 0 and initial["sequence"] > 0
+        wait_for(lambda: thread_count(pid) == 2)
+
+    relay = subprocess.Popen([binary, "observe"], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    try:
+        assert json.loads(relay.stdout.readline())["watches"] == 0
+        relay.stdin.close()
+        relay.wait(timeout=3)
+        assert relay.returncode == 0
+    finally:
+        if relay.poll() is None:
+            relay.kill()
+            relay.wait(timeout=3)
+        relay.stdout.close()
+    wait_for(lambda: thread_count(pid) == 2)
+
+    scope = os.path.join(root, "subscription")
+    for name in ("one", "two", "three"):
+        os.makedirs(os.path.join(scope, name))
+        write_file(os.path.join(scope, name, "junk.log"))
+    rules = config(scope, 3, "*", False, rule_id="empty")
+    rules += config(scope, rule_id="logs").split("\n", 1)[1]
+    invoke(binary, env, "clear-records")
+    with subscribe(env) as client, client.makefile("r", encoding="utf-8") as stream:
+        initial = json.loads(stream.readline())
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as stats:
+            before = sum(map(int, stats.read().split()[13:15]))
+        assert not select.select([client], [], [], 0.4)[0], "Idle subscription sent an unsolicited snapshot"
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as stats:
+            after = sum(map(int, stats.read().split()[13:15]))
+        assert after - before <= 3, "Idle subscription kept the backend awake"
+        invoke(binary, env, "rules", rules)
+        sequence = initial["sequence"]
+        counts = []
+        started = time.monotonic()
+        while True:
+            state = json.loads(stream.readline())
+            assert state["sequence"] >= sequence
+            sequence = state["sequence"]
+            counts.append(state["watches"])
+            deleted = sum(entry["deleted"] for entry in state["records"])
+            if deleted == 6 and state["watches"] == 1 and not state["checking"]:
+                break
+            assert time.monotonic() - started < 8, state
+        assert 4 in counts, counts
+        invoke(binary, env, "clear-records")
+        while json.loads(stream.readline())["records"]:
+            pass
+    wait_for(lambda: thread_count(pid) == 2)
+    invoke(binary, env, "rules", "CW\n")
+
+
+def check_slow_subscriber(binary: str, env: dict, root: str, pid: int):
+    scope = os.path.join(root, "slow-subscriber")
+    os.mkdir(scope)
+    rules = "CW\n" + "".join(
+        config(scope, pattern="x" * 200, recursive=False, literal=True, rule_id=f"large-{index}").split("\n", 1)[1]
+        for index in range(128)
+    )
+    invoke(binary, env, "rules", rules)
+    invoke(binary, env, "settled")
+    with subscribe(env) as client:
+        relay = subprocess.Popen([binary, "observe"], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        try:
+            wait_for(lambda: thread_count(pid) >= 4)
+            for index in range(40):
+                invoke(binary, env, "boot", str(index % 2))
+                time.sleep(0.05)
+            started = time.monotonic()
+            assert invoke(binary, env, "pause")["paused"]
+            assert time.monotonic() - started < 3, "Slow subscriber blocked control commands"
+            relay.stdin.close()
+            relay.wait(timeout=3)
+            assert relay.returncode == 0, "Blocked stdout prevented subscription cancellation"
+            time.sleep(3.2)
+            data = bytearray()
+            while chunk := client.recv(65536):
+                data.extend(chunk)
+            lines = data.split(b"\n")
+            assert len(lines) > 1, "Subscription did not deliver a complete snapshot"
+            for line in lines[:-1]:
+                assert json.loads(line)["rules"] == rules
+        finally:
+            if relay.poll() is None:
+                relay.kill()
+                relay.wait(timeout=3)
+            relay.stdout.close()
+    wait_for(lambda: thread_count(pid) == 2)
+    invoke(binary, env, "boot", "0")
+    invoke(binary, env, "rules", "CW\n")
+    invoke(binary, env, "resume")
 
 
 def check_control_during_rebuild(binary: str, env: dict, root: str):
@@ -235,6 +350,8 @@ if __name__ == "__main__":
     process = subprocess.Popen([binary, "serve"], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         wait_for(lambda: os.path.exists(os.path.join(env["CW_TEST_HOME"], "control.sock")))
+        check_status_subscription(binary, env, root, process.pid)
+        check_slow_subscriber(binary, env, root, process.pid)
         check_control_during_rebuild(binary, env, root)
         check_concurrent_pause(binary, env)
         check_failed_scan_recovers(binary, env, root)
@@ -376,7 +493,10 @@ if __name__ == "__main__":
         with open(f"/proc/{process.pid}/stat", encoding="utf-8") as stream:
             after = sum(map(int, stream.read().split()[13:15]))
         assert after - before <= 3, f"Unexpected idle CPU use: {after - before} ticks"
-        invoke(binary, env, "stop")
+        with subscribe(env) as client, client.makefile("r", encoding="utf-8") as stream:
+            assert json.loads(stream.readline())["running"]
+            invoke(binary, env, "stop")
+            assert stream.readline() == "", "Backend exit left a subscription open"
         process.wait(timeout=5)
         assert process.returncode == 0
         failed = subprocess.run(

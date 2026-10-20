@@ -5,6 +5,58 @@ import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
+
+internal fun streamProcess(command: List<String>) =
+    callbackFlow {
+            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val reader =
+                launch(Dispatchers.IO) {
+                    try {
+                        val decoder =
+                            Charsets.UTF_8.newDecoder()
+                                .onMalformedInput(CodingErrorAction.REPORT)
+                                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                        val line = ByteArrayOutputStream()
+                        process.inputStream.buffered().use { stream ->
+                            while (true) {
+                                val byte = stream.read()
+                                if (byte < 0) break
+                                if (byte == '\n'.code) {
+                                    trySend(
+                                        decoder
+                                            .decode(ByteBuffer.wrap(line.toByteArray()))
+                                            .toString()
+                                    )
+                                    line.reset()
+                                } else {
+                                    check(line.size() < 1024 * 1024) { "limit" }
+                                    line.write(byte)
+                                }
+                            }
+                        }
+                        close(IllegalStateException("offline"))
+                    } catch (e: Exception) {
+                        close(e)
+                    }
+                }
+            awaitClose {
+                try {
+                    process.outputStream.close()
+                } finally {
+                    process.destroyForcibly()
+                    reader.cancel()
+                }
+            }
+        }
+        .buffer(Channel.CONFLATED)
+        .flowOn(Dispatchers.IO)
 
 internal fun runProcess(
     command: List<String>,
@@ -17,18 +69,19 @@ internal fun runProcess(
     val failure = AtomicReference<Exception?>()
     fun remaining(): Long =
         TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()).coerceAtLeast(0)
-    fun transfer(action: () -> Unit): Thread = Thread {
-        try {
-            action()
-        } catch (e: Exception) {
-            failure.compareAndSet(null, e)
-            process.destroyForcibly()
-        }
-    }
-        .apply {
-            isDaemon = true
-            start()
-        }
+    fun transfer(action: () -> Unit): Thread =
+        Thread {
+                try {
+                    action()
+                } catch (e: Exception) {
+                    failure.compareAndSet(null, e)
+                    process.destroyForcibly()
+                }
+            }
+            .apply {
+                isDaemon = true
+                start()
+            }
     val reader = transfer {
         process.inputStream.use { stream ->
             val buffer = ByteArray(4096)

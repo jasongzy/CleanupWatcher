@@ -4,6 +4,7 @@ import android.content.Context
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -24,6 +25,17 @@ data class ComponentVersion(val name: String? = null, val code: Int? = null) {
 }
 
 class Backend(private val context: Context) {
+    fun observe() =
+        streamProcess(listOf("su", "-c", "exec $BINARY observe")).map { line ->
+            withContext(Dispatchers.Default) {
+                check(line.startsWith('{') && line.endsWith('}')) { shellFailure(-1, line) }
+                JSONObject(line).also {
+                    check(it.optString("error").isEmpty()) { it.getString("error") }
+                    require(it.getLong("sequence") > 0) { "config" }
+                }
+            }
+        }
+
     suspend fun call(verb: String, input: String = ""): JSONObject =
         withContext(Dispatchers.IO) {
             require(
@@ -39,7 +51,6 @@ class Backend(private val context: Context) {
                         "refresh",
                         "stop",
                         "boot",
-                        "settled",
                         "clear-records",
                     )
             )

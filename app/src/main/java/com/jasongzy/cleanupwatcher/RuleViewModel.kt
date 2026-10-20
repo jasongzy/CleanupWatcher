@@ -18,7 +18,10 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,8 +84,6 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         )
     private var rulesLoaded = false
     private var generation = 0
-    private var settling: Job? = null
-    private var refreshRecordsPending = false
     private var bootChange: Job? = null
     private val messages = Channel<Notice>(Channel.BUFFERED)
     val state = mutable.asStateFlow()
@@ -99,7 +100,6 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun disconnect() {
-        refreshRecordsPending = false
         mutable.value =
             mutable.value.copy(
                 connected = false,
@@ -156,7 +156,6 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 bootChange?.join()
                 generation++
-                settling?.cancel()
                 action()
             } catch (e: CancellationException) {
                 throw e
@@ -164,13 +163,6 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
                 fail(if (e is JSONException) "config: ${e.message}" else e.message ?: "backend")
             } finally {
                 mutable.value = mutable.value.copy(busy = false, cleaning = false)
-                if (
-                    mutable.value.connected &&
-                        (mutable.value.checking || refreshRecordsPending) &&
-                        mutable.value.error == null &&
-                        settling?.isActive != true
-                )
-                    awaitReady()
             }
         }
     }
@@ -188,14 +180,16 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         }
 
     private suspend fun accept(response: JSONObject) {
-        settings.edit {
-            putBoolean("boot", response.getBoolean("boot"))
-        }
+        val current = generation
         val requiredVersion = mutable.value.requiredBackendVersionCode
         val records =
             withContext(Dispatchers.Default) {
                 RecentRecord.decodeAll(response, requiredVersion)
             }
+        if (current != generation) return
+        settings.edit {
+            putBoolean("boot", response.getBoolean("boot"))
+        }
         val health = response.optJSONObject("health") ?: JSONObject()
         mutable.value =
             mutable.value.copy(
@@ -214,33 +208,47 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
                 health = health.keys().asSequence().associateWith { health.getString(it) },
                 records = records,
             )
-        if (mutable.value.checking) awaitReady()
     }
 
-    private fun awaitReady() {
-        val current = generation
-        settling?.cancel()
-        settling = viewModelScope.launch {
-            try {
-                val ready = backend.call("settled")
-                if (generation != current) return@launch
-                accept(ready)
-                if (ready.getBoolean("checking")) return@launch
-                if (refreshRecordsPending) {
-                    mutable.first { !it.busy && !it.bootBusy }
-                    delay(2000)
-                    val recent = backend.call("status")
-                    if (generation == current) {
-                        refreshRecordsPending = false
-                        accept(recent)
+    suspend fun observe() {
+        mutable
+            .map {
+                if (it.connected && !it.backendNeedsUpdate && !it.busy && !it.bootBusy) generation
+                else null
+            }
+            .distinctUntilChanged()
+            .collectLatest { current ->
+                if (current == null) return@collectLatest
+                var failures = 0
+                while (generation == current) {
+                    try {
+                        var sequence = 0L
+                        backend.observe().collect { response ->
+                            if (
+                                generation == current &&
+                                    !mutable.value.busy &&
+                                    !mutable.value.bootBusy &&
+                                    response.getLong("sequence") > sequence
+                            ) {
+                                sequence = response.getLong("sequence")
+                                failures = 0
+                                accept(response)
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        if (generation != current || mutable.value.busy || mutable.value.bootBusy)
+                            return@collectLatest
+                        if (e.message?.substringBefore(':') == "offline" && failures < 5) {
+                            delay(1000L shl failures++)
+                        } else {
+                            fail(e.message ?: "backend")
+                            return@collectLatest
+                        }
                     }
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (generation == current) fail(e.message ?: "backend")
             }
-        }
     }
 
     private suspend fun synchronize(response: JSONObject) {
@@ -374,7 +382,6 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (mutable.value.busy || mutable.value.bootBusy) return
         generation++
-        settling?.cancel()
         mutable.value = mutable.value.copy(bootBusy = true, error = null)
         bootChange = viewModelScope.launch {
             try {
@@ -387,13 +394,6 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
                 fail(e.message ?: "backend")
             } finally {
                 mutable.value = mutable.value.copy(bootBusy = false)
-                if (
-                    refreshRecordsPending &&
-                        mutable.value.connected &&
-                        mutable.value.error == null &&
-                        settling?.isActive != true
-                )
-                    awaitReady()
             }
         }
     }
@@ -446,7 +446,6 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         val added = next.map { it.id }.toSet() - mutable.value.rules.map { it.id }.toSet()
         val rules = replaceRules(mutable.value.rules, next, replacedId)
         updateRules(rules)
-        refreshRecordsPending = mutable.value.connected
         saved()
         ruleNotice(R.string.rules_saved)
         if (added.isNotEmpty()) {
@@ -465,7 +464,6 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         updateRules(
             mutable.value.rules.map { if (it.id in ids) it.copy(enabled = enabled) else it }
         )
-        if (enabled) refreshRecordsPending = mutable.value.connected
         ruleNotice(if (enabled) R.string.rules_enabled else R.string.rules_disabled)
     }
 
@@ -583,7 +581,6 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancel() {
         generation++
-        settling?.cancel()
         viewModelScope.launch {
             try {
                 accept(backend.call("pause"))
