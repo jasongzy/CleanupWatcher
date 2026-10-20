@@ -6,7 +6,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -20,6 +22,7 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
@@ -29,6 +32,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -211,408 +215,441 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
     LaunchedEffect(state.rules.map { it.id }) {
         selected = selected.filter { id -> state.rules.any { it.id == id } }
     }
-    if (settings) {
-        SettingsScreen(state, model) { settings = false }
-    } else
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            if (selected.isEmpty()) stringResource(R.string.app_name)
-                            else
-                                pluralStringResource(
-                                    R.plurals.selected_count,
-                                    selected.size,
-                                    selected.size,
-                                )
-                        )
-                    },
-                    navigationIcon = {
-                        if (selected.isNotEmpty())
-                            ToolButton(R.drawable.ic_close, R.string.cancel) {
-                                selected = emptyList()
-                            }
-                    },
-                    actions = {
-                        if (selected.isEmpty()) {
-                            ToolButton(
-                                R.drawable.ic_refresh,
-                                R.string.refresh,
-                                !state.busy,
-                                model::refresh,
-                            )
-                            ToolButton(R.drawable.ic_settings, R.string.settings) {
-                                settings = true
-                            }
-                        } else {
-                            ToolButton(
-                                R.drawable.ic_select_all,
-                                R.string.select_all,
-                                !state.busy && selected.size < state.rules.size,
-                            ) {
-                                selected = state.rules.map { it.id }
-                            }
-                            ToolButton(
-                                R.drawable.ic_check,
-                                R.string.enable_selected,
-                                state.connected && !state.busy,
-                            ) {
-                                model.previewBatch(selected.toSet())
-                            }
-                            ToolButton(
-                                R.drawable.ic_block,
-                                R.string.disable_selected,
-                                !state.busy,
-                            ) {
-                                model.enable(selected.toSet(), false)
-                                selected = emptyList()
-                            }
-                            ToolButton(
-                                R.drawable.ic_delete,
-                                R.string.delete_selected,
-                                !state.busy,
-                            ) {
-                                removingBatch = true
-                            }
-                        }
-                    },
+    AnimatedContent(
+        targetState = settings,
+        modifier = Modifier.fillMaxSize().clipToBounds(),
+        transitionSpec = {
+            val direction = if (targetState) 1 else -1
+            slideInHorizontally(
+                animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
+                initialOffsetX = { it * direction },
+            ) togetherWith
+                slideOutHorizontally(
+                    animationSpec = spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow),
+                    targetOffsetX = { -it * direction },
                 )
-            },
-            floatingActionButton = {
-                if (selected.isEmpty())
-                    FloatingActionButton(onClick = { if (!state.busy) editor = Rule() }) {
-                        Icon(painterResource(R.drawable.ic_add), stringResource(R.string.add_rule))
-                    }
-            },
-        ) { padding ->
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                state = listState,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                item {
-                    Box(Modifier.fillMaxWidth().height(4.dp)) {
-                        if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    }
-                }
-                item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            Modifier.padding(20.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                StatusIcon(
-                                    active = state.monitoring,
-                                    paused = false,
-                                    checking =
-                                        (state.monitoring && state.checking) ||
-                                            (!state.checked && state.error == null),
-                                    error =
-                                        (!state.connected && state.error != null) ||
-                                            (state.monitoring && state.ruleErrorCount > 0),
-                                    absent = !state.installed,
-                                    stopped = state.installed && !state.monitoring,
-                                    warning = state.checked && state.backendNeedsUpdate,
-                                )
-                                Spacer(Modifier.width(16.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        stringResource(R.string.backend) +
-                                            if (state.backendPresent)
-                                                " · ${componentVersionText(state.backendVersion)}"
-                                            else "",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        stringResource(
-                                            backendStatusResource(state),
-                                            state.ruleErrorCount,
-                                        ),
-                                        style = MaterialTheme.typography.headlineSmall,
-                                    )
-                                }
-                            }
-                            if (state.connected) {
-                                Text(
+        },
+        label = "settings",
+    ) { showSettings ->
+        if (showSettings) {
+            SettingsScreen(state, model) { settings = false }
+        } else
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                if (selected.isEmpty()) stringResource(R.string.app_name)
+                                else
                                     pluralStringResource(
-                                        R.plurals.watch_count,
-                                        state.watches,
-                                        state.watches,
+                                        R.plurals.selected_count,
+                                        selected.size,
+                                        selected.size,
                                     ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            }
-                            if (state.installed) {
-                                Row(
-                                    if (state.moduleActive)
-                                        Modifier.clickable(role = Role.Button) { model.boot(false) }
-                                    else Modifier,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(stringResource(R.string.boot), Modifier.weight(1f))
-                                    Switch(
-                                        state.startsAtBoot,
-                                        if (state.moduleActive) null else model::boot,
-                                        enabled =
-                                            state.connected &&
-                                                !state.busy &&
-                                                !state.bootBusy &&
-                                                !state.moduleActive,
-                                        thumbContent =
-                                            if (state.moduleActive) {
-                                                {
-                                                    Icon(
-                                                        painterResource(R.drawable.ic_lock),
-                                                        null,
-                                                        Modifier.size(16.dp),
-                                                    )
-                                                }
-                                            } else null,
-                                        colors =
-                                            SwitchDefaults.colors(
-                                                disabledCheckedTrackColor =
-                                                    MaterialTheme.colorScheme.primary,
-                                                disabledCheckedThumbColor =
-                                                    MaterialTheme.colorScheme.onPrimary,
-                                                disabledCheckedBorderColor =
-                                                    MaterialTheme.colorScheme.primary,
-                                                disabledCheckedIconColor =
-                                                    MaterialTheme.colorScheme.primary,
-                                            ),
-                                    )
+                                fontWeight = if (selected.isEmpty()) FontWeight.Bold else null,
+                            )
+                        },
+                        navigationIcon = {
+                            if (selected.isNotEmpty())
+                                ToolButton(R.drawable.ic_close, R.string.cancel) {
+                                    selected = emptyList()
                                 }
-                            }
-                            if (state.monitoring) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    FilledTonalButton(model::stop, enabled = !state.busy) {
-                                        Text(stringResource(R.string.stop_backend))
-                                    }
+                        },
+                        actions = {
+                            if (selected.isEmpty()) {
+                                ToolButton(
+                                    R.drawable.ic_refresh,
+                                    R.string.refresh,
+                                    !state.busy,
+                                    model::refresh,
+                                )
+                                ToolButton(R.drawable.ic_settings, R.string.settings) {
+                                    settings = true
                                 }
                             } else {
-                                if (!state.installed)
+                                ToolButton(
+                                    R.drawable.ic_select_all,
+                                    R.string.select_all,
+                                    !state.busy && selected.size < state.rules.size,
+                                ) {
+                                    selected = state.rules.map { it.id }
+                                }
+                                ToolButton(
+                                    R.drawable.ic_check,
+                                    R.string.enable_selected,
+                                    state.connected && !state.busy,
+                                ) {
+                                    model.previewBatch(selected.toSet())
+                                }
+                                ToolButton(
+                                    R.drawable.ic_block,
+                                    R.string.disable_selected,
+                                    !state.busy,
+                                ) {
+                                    model.enable(selected.toSet(), false)
+                                    selected = emptyList()
+                                }
+                                ToolButton(
+                                    R.drawable.ic_delete,
+                                    R.string.delete_selected,
+                                    !state.busy,
+                                ) {
+                                    removingBatch = true
+                                }
+                            }
+                        },
+                    )
+                },
+                floatingActionButton = {
+                    if (selected.isEmpty())
+                        FloatingActionButton(onClick = { if (!state.busy) editor = Rule() }) {
+                            Icon(
+                                painterResource(R.drawable.ic_add),
+                                stringResource(R.string.add_rule),
+                            )
+                        }
+                },
+            ) { padding ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    state = listState,
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item {
+                        Box(Modifier.fillMaxWidth().height(4.dp)) {
+                            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        }
+                    }
+                    item {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                Modifier.padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    StatusIcon(
+                                        active = state.monitoring,
+                                        paused = false,
+                                        checking =
+                                            (state.monitoring && state.checking) ||
+                                                (!state.checked && state.error == null),
+                                        error =
+                                            (!state.connected && state.error != null) ||
+                                                (state.monitoring && state.ruleErrorCount > 0),
+                                        absent = !state.installed,
+                                        stopped = state.installed && !state.monitoring,
+                                        warning = state.checked && state.backendNeedsUpdate,
+                                    )
+                                    Spacer(Modifier.width(16.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            stringResource(R.string.backend) +
+                                                if (state.backendPresent)
+                                                    " · ${componentVersionText(state.backendVersion)}"
+                                                else "",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Text(
+                                            stringResource(
+                                                backendStatusResource(state),
+                                                state.ruleErrorCount,
+                                            ),
+                                            style = MaterialTheme.typography.headlineSmall,
+                                        )
+                                    }
+                                }
+                                if (state.connected) {
                                     Text(
-                                        stringResource(R.string.setup_hint),
+                                        pluralStringResource(
+                                            R.plurals.watch_count,
+                                            state.watches,
+                                            state.watches,
+                                        ),
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        if (state.installed) model::start else model::install,
-                                        enabled = !state.busy,
+                                }
+                                if (state.installed) {
+                                    Row(
+                                        if (state.moduleActive)
+                                            Modifier.clickable(role = Role.Button) {
+                                                model.boot(false)
+                                            }
+                                        else Modifier,
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Text(
-                                            stringResource(
-                                                if (state.installed) R.string.start_backend
-                                                else R.string.install
-                                            )
+                                        Text(stringResource(R.string.boot), Modifier.weight(1f))
+                                        Switch(
+                                            state.startsAtBoot,
+                                            if (state.moduleActive) null else model::boot,
+                                            enabled =
+                                                state.connected &&
+                                                    !state.busy &&
+                                                    !state.bootBusy &&
+                                                    !state.moduleActive,
+                                            thumbContent =
+                                                if (state.moduleActive) {
+                                                    {
+                                                        Icon(
+                                                            painterResource(R.drawable.ic_lock),
+                                                            null,
+                                                            Modifier.size(16.dp),
+                                                        )
+                                                    }
+                                                } else null,
+                                            colors =
+                                                SwitchDefaults.colors(
+                                                    disabledCheckedTrackColor =
+                                                        MaterialTheme.colorScheme.primary,
+                                                    disabledCheckedThumbColor =
+                                                        MaterialTheme.colorScheme.onPrimary,
+                                                    disabledCheckedBorderColor =
+                                                        MaterialTheme.colorScheme.primary,
+                                                    disabledCheckedIconColor =
+                                                        MaterialTheme.colorScheme.primary,
+                                                ),
                                         )
                                     }
                                 }
-                            }
-                            if (state.backendPresent)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(model::install, enabled = !state.busy) {
-                                        Text(
-                                            stringResource(
-                                                if (state.backendNeedsUpdate)
-                                                    R.string.update_backend
-                                                else R.string.reinstall_backend
-                                            )
-                                        )
+                                if (state.monitoring) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        FilledTonalButton(model::stop, enabled = !state.busy) {
+                                            Text(stringResource(R.string.stop_backend))
+                                        }
                                     }
-                                    TextButton(
-                                        { componentRemoval = "backend" },
-                                        enabled = !state.busy,
-                                    ) {
+                                } else {
+                                    if (!state.installed)
                                         Text(
-                                            stringResource(R.string.uninstall_backend),
-                                            color = MaterialTheme.colorScheme.error,
+                                            stringResource(R.string.setup_hint),
+                                            style = MaterialTheme.typography.bodyMedium,
                                         )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            if (state.installed) model::start else model::install,
+                                            enabled = !state.busy,
+                                        ) {
+                                            Text(
+                                                stringResource(
+                                                    if (state.installed) R.string.start_backend
+                                                    else R.string.install
+                                                )
+                                            )
+                                        }
                                     }
                                 }
-                        }
-                    }
-                }
-                item {
-                    Card(Modifier.fillMaxWidth()) {
-                        Column(
-                            Modifier.padding(20.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                StatusIcon(
-                                    state.moduleActive,
-                                    state.module == "disabled",
-                                    !state.checked && state.error == null,
-                                    state.module == "invalid",
-                                    state.module == "removing",
-                                    absent = state.module == "absent",
-                                    warning =
-                                        state.checked &&
-                                            state.moduleNeedsUpdate &&
-                                            state.module != "removing",
-                                )
-                                Spacer(Modifier.width(16.dp))
-                                Column {
-                                    Text(
-                                        stringResource(R.string.magisk_module) +
-                                            if (state.module != "absent")
-                                                " · ${componentVersionText(state.moduleVersion)}"
-                                            else "",
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    Text(
-                                        stringResource(moduleStatusResource(state)),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                            Text(
-                                stringResource(R.string.module_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (state.magisk)
-                                    TextButton({ model.module(true) }, enabled = !state.busy) {
-                                        Text(
-                                            stringResource(
-                                                if (state.module == "absent")
-                                                    R.string.install_module
-                                                else R.string.reinstall_module
+                                if (state.backendPresent)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(model::install, enabled = !state.busy) {
+                                            Text(
+                                                stringResource(
+                                                    if (state.backendNeedsUpdate)
+                                                        R.string.update_backend
+                                                    else R.string.reinstall_backend
+                                                )
                                             )
-                                        )
-                                    }
-                                if (state.module != "absent")
-                                    TextButton(
-                                        { componentRemoval = "module" },
-                                        enabled = !state.busy,
-                                    ) {
-                                        Text(
-                                            stringResource(R.string.uninstall_module),
-                                            color = MaterialTheme.colorScheme.error,
-                                        )
+                                        }
+                                        TextButton(
+                                            { componentRemoval = "backend" },
+                                            enabled = !state.busy,
+                                        ) {
+                                            Text(
+                                                stringResource(R.string.uninstall_backend),
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
+                                        }
                                     }
                             }
                         }
                     }
-                }
-                if (state.cleaning)
                     item {
-                        TextButton(model::cancel) {
-                            Text(stringResource(R.string.stop_cleanup))
-                        }
-                    }
-                item {
-                    Text(
-                        stringResource(R.string.rules),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-                if (state.rules.isEmpty())
-                    item {
-                        Column(
-                            Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                stringResource(R.string.empty_rules),
-                                style = MaterialTheme.typography.titleLarge,
-                            )
-                            Text(
-                                stringResource(R.string.empty_hint),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            FilledTonalButton(
-                                onClick = { editor = Rule() },
-                                enabled = !state.busy,
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(
+                                Modifier.padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Text(stringResource(R.string.add_rule))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    StatusIcon(
+                                        state.moduleActive,
+                                        state.module == "disabled",
+                                        !state.checked && state.error == null,
+                                        state.module == "invalid",
+                                        state.module == "removing",
+                                        absent = state.module == "absent",
+                                        warning =
+                                            state.checked &&
+                                                state.moduleNeedsUpdate &&
+                                                state.module != "removing",
+                                    )
+                                    Spacer(Modifier.width(16.dp))
+                                    Column {
+                                        Text(
+                                            stringResource(R.string.magisk_module) +
+                                                if (state.module != "absent")
+                                                    " · ${componentVersionText(state.moduleVersion)}"
+                                                else "",
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                        Text(
+                                            stringResource(moduleStatusResource(state)),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                Text(
+                                    stringResource(R.string.module_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (state.magisk)
+                                        TextButton({ model.module(true) }, enabled = !state.busy) {
+                                            Text(
+                                                stringResource(
+                                                    if (state.module == "absent")
+                                                        R.string.install_module
+                                                    else R.string.reinstall_module
+                                                )
+                                            )
+                                        }
+                                    if (state.module != "absent")
+                                        TextButton(
+                                            { componentRemoval = "module" },
+                                            enabled = !state.busy,
+                                        ) {
+                                            Text(
+                                                stringResource(R.string.uninstall_module),
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
+                                        }
+                                }
                             }
                         }
                     }
-                items(state.rules, key = { it.id }) { rule ->
-                    RuleCard(
-                        rule,
-                        !state.busy,
-                        state.connected && !state.busy,
-                        state.health[rule.id].orEmpty(),
-                        selected = rule.id in selected,
-                        highlighted = rule.id == highlightedRule,
-                        selecting = selected.isNotEmpty(),
-                        select = { toggleSelection(rule.id) },
-                        edit = { editor = rule },
-                        remove = { removing = rule },
-                        preview = {
-                            enabling = null
-                            model.preview(rule.id)
-                        },
-                        enable = { checked ->
-                            if (checked) {
-                                enabling = rule.id
-                                model.preview(rule.id)
-                            } else model.enable(setOf(rule.id), false)
-                        },
-                    )
-                }
-                if (state.records.isNotEmpty()) {
-                    item {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                stringResource(R.string.recent_records),
-                                Modifier.weight(1f),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            ToolButton(R.drawable.ic_delete, R.string.clear_records, !state.busy) {
-                                clearingRecords = true
+                    if (state.cleaning)
+                        item {
+                            TextButton(model::cancel) {
+                                Text(stringResource(R.string.stop_cleanup))
                             }
                         }
+                    item {
                         Text(
-                            stringResource(R.string.records_retention),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            stringResource(R.string.rules),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(top = 8.dp),
                         )
                     }
-                    items(state.records) { record ->
-                        val error = record.error
-                        ListItem(
-                            modifier =
-                                Modifier.clickable(role = Role.Button) { recordDetails = record },
-                            headlineContent = {
-                                Text(record.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (state.rules.isEmpty())
+                        item {
+                            Column(
+                                Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    stringResource(R.string.empty_rules),
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                                Text(
+                                    stringResource(R.string.empty_hint),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                FilledTonalButton(
+                                    onClick = { editor = Rule() },
+                                    enabled = !state.busy,
+                                ) {
+                                    Text(stringResource(R.string.add_rule))
+                                }
+                            }
+                        }
+                    items(state.rules, key = { it.id }) { rule ->
+                        RuleCard(
+                            rule,
+                            !state.busy,
+                            state.connected && !state.busy,
+                            state.health[rule.id].orEmpty(),
+                            selected = rule.id in selected,
+                            highlighted = rule.id == highlightedRule,
+                            selecting = selected.isNotEmpty(),
+                            select = { toggleSelection(rule.id) },
+                            edit = { editor = rule },
+                            remove = { removing = rule },
+                            preview = {
+                                enabling = null
+                                model.preview(rule.id)
                             },
-                            supportingContent = {
-                                Column {
+                            enable = { checked ->
+                                if (checked) {
+                                    enabling = rule.id
+                                    model.preview(rule.id)
+                                } else model.enable(setOf(rule.id), false)
+                            },
+                        )
+                    }
+                    if (state.records.isNotEmpty()) {
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    stringResource(R.string.recent_records),
+                                    Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                ToolButton(
+                                    R.drawable.ic_delete,
+                                    R.string.clear_records,
+                                    !state.busy,
+                                ) {
+                                    clearingRecords = true
+                                }
+                            }
+                            Text(
+                                stringResource(R.string.records_retention),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        items(state.records) { record ->
+                            val error = record.error
+                            ListItem(
+                                modifier =
+                                    Modifier.clickable(role = Role.Button) {
+                                        recordDetails = record
+                                    },
+                                headlineContent = {
                                     Text(
-                                        record.root,
+                                        record.name,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    Text(
-                                        pluralStringResource(
-                                            R.plurals.cleaned,
-                                            record.deleted,
-                                            record.deleted,
-                                        ) + " · " + formatTimestamp(record.time),
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                    if (error.isNotEmpty())
+                                },
+                                supportingContent = {
+                                    Column {
                                         Text(
-                                            errorText(error),
-                                            color = MaterialTheme.colorScheme.error,
+                                            record.root,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                         )
-                                }
-                            },
-                        )
+                                        Text(
+                                            pluralStringResource(
+                                                R.plurals.cleaned,
+                                                record.deleted,
+                                                record.deleted,
+                                            ) + " · " + formatTimestamp(record.time),
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                        if (error.isNotEmpty())
+                                            Text(
+                                                errorText(error),
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
-        }
+    }
     editor?.let { rule ->
         RuleEditor(
             rule,
