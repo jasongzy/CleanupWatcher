@@ -411,29 +411,26 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         withContext(NonCancellable) {
-            var resume = false
-            if (mutable.value.installed) {
-                try {
-                    val status = backend.call("status")
-                    resume = !status.getBoolean("paused")
-                    if (resume) accept(backend.call("pause"))
-                } catch (e: Exception) {
-                    if (e.message?.substringBefore(':') != "offline") throw e
-                }
-            }
             val response =
-                if (mutable.value.installed) backend.manage("configure", encoded) else null
-            persist(rules)
-            mutable.value =
-                mutable.value.copy(
-                    rules = rules,
-                    preview = null,
-                    batchPreview = null,
-                    newRuleIds = emptySet(),
-                    importedRuleIds = emptySet(),
+                storeRules(
+                    Rule.encode(mutable.value.rules),
+                    encoded,
+                    mutable.value.installed,
+                    call = { backend.call(it) },
+                    configure = { backend.manage("configure", it) },
+                    persist = {
+                        persist(rules)
+                        mutable.value =
+                            mutable.value.copy(
+                                rules = rules,
+                                preview = null,
+                                batchPreview = null,
+                                newRuleIds = emptySet(),
+                                importedRuleIds = emptySet(),
+                            )
+                    },
                 )
-            if (response?.optBoolean("running") == true)
-                accept(if (resume) backend.call("resume") else response)
+            if (response?.optBoolean("running") == true) accept(response)
             else if (response != null) disconnect()
         }
     }
