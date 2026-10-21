@@ -4,7 +4,7 @@
 
 <h1 align="center">Cleanup Watcher</h1>
 
-[中文文档](README.zh-CN.md)
+English | [简体中文](README.zh-CN.md)
 
 An Android root cleaner built for reliable, continuous background monitoring. An independent C++ backend handles monitoring and automatic cleanup, while the app handles configuration and management. Monitoring and cleanup continue after the app process ends.
 

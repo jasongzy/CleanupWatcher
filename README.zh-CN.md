@@ -4,7 +4,7 @@
 
 <h1 align="center">Cleanup Watcher</h1>
 
-[English Doc](README.md)
+[English](README.md) | 简体中文
 
 专注于稳定、持续后台监测的 Android root 清理工具。独立 C++ 后端负责监测与自动清理，App 负责配置与管理；结束 App 后，监测和清理仍会继续。
 
