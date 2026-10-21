@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -47,21 +48,28 @@ import kotlinx.coroutines.launch
 
 private const val RULE_HEADER_ITEMS = 4 // Progress, backend, module, and rules heading.
 
+internal fun applyColorMode(value: String) {
+    AppCompatDelegate.setDefaultNightMode(
+        when (value) {
+            "light" -> AppCompatDelegate.MODE_NIGHT_NO
+            "dark" -> AppCompatDelegate.MODE_NIGHT_YES
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+    )
+}
+
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyColorMode(
+            getSharedPreferences("settings", 0).getString("colorMode", "system") ?: "system"
+        )
         super.onCreate(savedInstanceState)
         window.decorView.filterTouchesWhenObscured = true
         if (android.os.Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(true)
         enableEdgeToEdge()
         setContent {
             val model: RuleViewModel = viewModel()
-            val state by model.state.collectAsStateWithLifecycle()
-            val dark =
-                when (state.colorMode) {
-                    "light" -> false
-                    "dark" -> true
-                    else -> androidx.compose.foundation.isSystemInDarkTheme()
-                }
+            val dark = androidx.compose.foundation.isSystemInDarkTheme()
             val scheme =
                 if (android.os.Build.VERSION.SDK_INT >= 31) {
                     if (dark) dynamicDarkColorScheme(this) else dynamicLightColorScheme(this)

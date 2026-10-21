@@ -509,6 +509,7 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         require(value in setOf("system", "light", "dark"))
         settings.edit { putString("colorMode", value) }
         mutable.value = mutable.value.copy(colorMode = value)
+        applyColorMode(value)
     }
 
     fun readImport(uri: Uri) =
