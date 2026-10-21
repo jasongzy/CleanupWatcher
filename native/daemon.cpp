@@ -32,7 +32,6 @@
 using namespace cw;
 static std::mutex mutex;
 static std::mutex deletion;
-static std::condition_variable watchReady;
 static std::vector<Rule> rules;
 static std::vector<RecentRecord> records;
 static std::map<std::string, std::string> health;
@@ -372,7 +371,6 @@ static void worker() {
                 watchRevision = version;
                 stateChanged();
             }
-            watchReady.notify_all();
         }
         long long due = pending.empty()
                             ? -1
@@ -571,15 +569,6 @@ static std::string command(const std::string &request) {
     auto payload = newline == std::string::npos ? "" : request.substr(newline + 1);
     if (verb == "status")
         return status();
-    if (verb == "settled") {
-        std::unique_lock lock(mutex);
-        if (!stopping && watchRevision != revision) {
-            WaitSlot waiting;
-            watchReady.wait_for(lock, std::chrono::seconds(20), [] { return stopping || watchRevision == revision; });
-        }
-        lock.unlock();
-        return status();
-    }
     if (verb == "clear-records") {
         {
             std::lock_guard lock(mutex);
@@ -681,7 +670,6 @@ static std::string command(const std::string &request) {
             stopping = true;
             stateChanged();
         }
-        watchReady.notify_all();
         ++policyRevision;
         ++revision;
         notify();
@@ -816,7 +804,6 @@ static void serve() {
         stopping = true;
         stateChanged();
     }
-    watchReady.notify_all();
     if (storageChild > 0) {
         kill(storageChild, SIGTERM);
         waitpid(storageChild, nullptr, 0);

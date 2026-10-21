@@ -69,6 +69,17 @@ def subscribe(env: dict):
     return client
 
 
+def wait_ready(env: dict) -> dict:
+    with subscribe(env) as client, client.makefile("r", encoding="utf-8") as stream:
+        client.settimeout(20)
+        for line in stream:
+            status = json.loads(line)
+            assert not status.get("error"), status
+            if not status["checking"]:
+                return status
+    raise AssertionError("Backend stopped while establishing watches")
+
+
 def thread_count(pid: int) -> int:
     with open(f"/proc/{pid}/status", encoding="utf-8") as stream:
         return next(int(line.split()[1]) for line in stream if line.startswith("Threads:"))
@@ -76,7 +87,7 @@ def thread_count(pid: int) -> int:
 
 def check_status_subscription(binary: str, env: dict, root: str, pid: int):
     invoke(binary, env, "rules", "CW\n")
-    invoke(binary, env, "settled")
+    wait_ready(env)
     wait_for(lambda: thread_count(pid) == 2)
     for _ in range(12):
         with subscribe(env) as client, client.makefile("r", encoding="utf-8") as stream:
@@ -141,7 +152,7 @@ def check_slow_subscriber(binary: str, env: dict, root: str, pid: int):
         for index in range(128)
     )
     invoke(binary, env, "rules", rules)
-    invoke(binary, env, "settled")
+    wait_ready(env)
     with subscribe(env) as client:
         relay = subprocess.Popen([binary, "observe"], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         try:
@@ -189,11 +200,7 @@ def check_control_during_rebuild(binary: str, env: dict, root: str):
     waiting = []
     try:
         for _ in range(4):
-            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            waiting.append(client)
-            client.connect(os.path.join(env["CW_TEST_HOME"], "control.sock"))
-            client.sendall(b"settled\n")
-            client.shutdown(socket.SHUT_WR)
+            waiting.append(subscribe(env))
         time.sleep(0.05)
         assert invoke(binary, env, "status")["checking"], "The load fixture did not keep rebuild active"
         invoke(binary, env, "pause")
@@ -214,7 +221,7 @@ def check_failed_scan_recovers(binary: str, env: dict, root: str):
     invoke(binary, env, "pause")
     invoke(binary, env, "rules", config(scope, 2, "Junk", False, rule_id="recovery"))
     invoke(binary, env, "resume")
-    assert invoke(binary, env, "settled")["health"]["recovery"] == "symlink"
+    assert wait_ready(env)["health"]["recovery"] == "symlink"
     assert os.path.exists(junk) and os.path.exists(sentinel)
     os.unlink(link)
     wait_for(lambda: not os.path.exists(junk))
@@ -232,7 +239,7 @@ def check_failed_scan_recovers(binary: str, env: dict, root: str):
     rules = config(scope, recursive=False, rule_id="existing")
     rules += config(missing, rule_id="absent").split("\n", 1)[1]
     invoke(binary, env, "rules", rules)
-    assert invoke(binary, env, "settled")["health"]["absent"].startswith("storage")
+    assert wait_ready(env)["health"]["absent"].startswith("storage")
     active_file = os.path.join(scope, "active.log")
     write_file(active_file)
     wait_for(lambda: not os.path.exists(active_file))
@@ -252,7 +259,7 @@ def check_invalid_filename(binary: str, env: dict, root: str):
     rules = config(scope, rule_id="invalid")
     rules += config(scope, pattern="*.tmp", rule_id="valid").split("\n", 1)[1]
     invoke(binary, env, "rules", rules)
-    status = invoke(binary, env, "settled")
+    status = wait_ready(env)
     assert status["health"]["invalid"] == "filename", status
     assert os.path.exists(invalid)
     valid = os.path.join(scope, "valid.tmp")
@@ -300,7 +307,7 @@ def check_empty_children(binary: str, env: dict, root: str):
     empty = os.path.join(scope, "Empty")
     os.mkdir(empty)
     invoke(binary, env, "rules", config(scope, 3, "*", False))
-    invoke(binary, env, "settled")
+    wait_ready(env)
     wait_for(lambda: not os.path.exists(empty))
     wait_for(lambda: invoke(binary, env, "status")["watches"] == 4)
     assert os.path.exists(deep) and os.path.exists(os.path.join(hidden, ".nomedia"))
@@ -344,7 +351,7 @@ def check_unrelated_moves(binary: str, env: dict, root: str):
     os.makedirs(noise)
     for action, name in ((0, "target.log"), (2, "Junk")):
         invoke(binary, env, "rules", config(scope, action, name, False))
-        invoke(binary, env, "settled")
+        wait_ready(env)
         target = os.path.join(scope, name)
         if action == 0:
             write_file(target)
@@ -374,7 +381,7 @@ def check_idle_directories(binary: str, env: dict, root: str):
         for action, pattern, error in ((0, "*.log", ""), (2, "child", "symlink")):
             invoke(binary, env, "rules", config(scope, action, pattern))
             invoke(binary, env, "resume")
-            assert invoke(binary, env, "settled")["health"]["test"] == error
+            assert wait_ready(env)["health"]["test"] == error
             time.sleep(2)
             while select.select([notifications], [], [], 0)[0]:
                 os.read(notifications, 65536)
@@ -408,7 +415,7 @@ if __name__ == "__main__":
         maximum = maximum[:-1] + " " * (128 * 1024 - len(maximum)) + "\n"
         invoke(binary, env, "rules", maximum)
         invoke(binary, env, "rules", config(folder))
-        assert not invoke(binary, env, "settled")["checking"]
+        wait_ready(env)
         path = os.path.join(folder, "event.log")
         write_file(path)
         wait_for(lambda: not os.path.exists(path))
@@ -432,7 +439,7 @@ if __name__ == "__main__":
         cleared = invoke(binary, env, "clear-records")
         assert cleared["records"] == [] and cleared["paused"] and cleared["rules"] == snapshot["rules"]
         invoke(binary, env, "resume")
-        assert not invoke(binary, env, "settled")["checking"]
+        wait_ready(env)
         time.sleep(2)
         temporary = os.path.join(folder, "pending.bin")
         write_file(temporary)
@@ -494,7 +501,7 @@ if __name__ == "__main__":
         duplicate = config(folder, pattern="overlap-*.log", recursive=False, rule_id="one")
         duplicate += config(folder, pattern="overlap-*.log", recursive=False, rule_id="two").split("\n", 1)[1]
         invoke(binary, env, "rules", duplicate)
-        assert invoke(binary, env, "settled")["watches"] == 1
+        assert wait_ready(env)["watches"] == 1
         invoke(binary, env, "clear-records")
         overlap_file = os.path.join(folder, "overlap-once.log")
         write_file(overlap_file)
@@ -507,7 +514,7 @@ if __name__ == "__main__":
         combined = config(folder, 1, "Overlap", False, rule_id="parent")
         combined += config(overlap, pattern="*.tmp", recursive=False, rule_id="child").split("\n", 1)[1]
         invoke(binary, env, "rules", combined)
-        assert invoke(binary, env, "settled")["watches"] == 3
+        assert wait_ready(env)["watches"] == 3
         wait_for(lambda: not os.path.exists(overlap))
         invoke(binary, env, "rules", config(folder, pattern="literal*.log", recursive=False, literal=True))
         exact = os.path.join(folder, "literal*.log")

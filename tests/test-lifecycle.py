@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import time
 
-from test_backend import config, invoke, wait_for, write_file
+from test_backend import config, invoke, wait_for, wait_ready, write_file
 
 
 def manage(binary: str, env: dict, *args: str, input: str = "", success: bool = True) -> dict:
@@ -183,7 +183,7 @@ if __name__ == "__main__":
         first_pid = daemon_pid(home)
         assert invoke(binary, env, "status")["paused"]
         invoke(binary, env, "resume")
-        assert not invoke(binary, env, "settled")["checking"]
+        wait_ready(env)
         assert not invoke(binary, env, "status")["paused"]
         assert invoke(binary, env, "status")["rules"] == pending
         manage(binary, env, "module-uninstall")
