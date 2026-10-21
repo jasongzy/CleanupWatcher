@@ -196,7 +196,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
         )
     }
     var editor by rememberSaveable(stateSaver = editorSaver) { mutableStateOf<Rule?>(null) }
-    var removing by remember { mutableStateOf<Rule?>(null) }
+    var removing by rememberSaveable { mutableStateOf<String?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(model, owner, settings) {
         if (!settings) {
@@ -210,10 +210,15 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
     var selected by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var removingBatch by rememberSaveable { mutableStateOf(false) }
     var clearingRecords by rememberSaveable { mutableStateOf(false) }
-    var recordDetails by remember { mutableStateOf<RecentRecord?>(null) }
     var enabling by rememberSaveable { mutableStateOf<String?>(null) }
     var cleaning by rememberSaveable { mutableStateOf<String?>(null) }
     var componentRemoval by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.savedRuleId) {
+        state.savedRuleId?.let { id ->
+            if (editor?.id == id) editor = null
+            model.acknowledgeRuleSave()
+        }
+    }
     fun toggleSelection(id: String) {
         selected = if (id in selected) selected - id else selected + id
     }
@@ -581,7 +586,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                             selecting = selected.isNotEmpty(),
                             select = { toggleSelection(rule.id) },
                             edit = { editor = rule },
-                            remove = { removing = rule },
+                            remove = { removing = rule.id },
                             preview = {
                                 enabling = null
                                 model.preview(rule.id)
@@ -621,7 +626,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                             ListItem(
                                 modifier =
                                     Modifier.clickable(role = Role.Button) {
-                                        recordDetails = record
+                                        model.selectRecord(record)
                                     },
                                 headlineContent = {
                                     Text(
@@ -666,10 +671,10 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
             state.busy,
             { editor = null },
         ) { updated ->
-            model.save(updated, rule.id) { editor = null }
+            model.save(updated, rule.id)
         }
     }
-    removing?.let { rule ->
+    state.rules.firstOrNull { it.id == removing }?.let { rule ->
         AlertDialog(
             onDismissRequest = { removing = null },
             title = { Text(stringResource(R.string.remove_title)) },
@@ -888,9 +893,9 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
             },
         )
     }
-    recordDetails?.let { record ->
+    state.recordDetails?.let { record ->
         AlertDialog(
-            onDismissRequest = { recordDetails = null },
+            onDismissRequest = { model.selectRecord(null) },
             title = {
                 Text(pluralStringResource(R.plurals.cleaned, record.deleted, record.deleted))
             },
@@ -932,7 +937,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                             locateJob?.cancel()
                             highlightedRule = null
                             selected = emptyList()
-                            recordDetails = null
+                            model.selectRecord(null)
                             locateJob = scope.launch {
                                 listState.animateScrollToItem(
                                     RULE_HEADER_ITEMS + index + if (state.cleaning) 1 else 0
@@ -949,7 +954,7 @@ private fun WatcherScreen(model: RuleViewModel = viewModel()) {
                 }
             },
             dismissButton = {
-                TextButton({ recordDetails = null }) { Text(stringResource(R.string.close)) }
+                TextButton({ model.selectRecord(null) }) { Text(stringResource(R.string.close)) }
             },
         )
     }

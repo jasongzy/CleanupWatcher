@@ -139,7 +139,7 @@ internal fun SettingsScreen(state: UiState, model: RuleViewModel, dismiss: () ->
             colors = false
         }
     state.pendingImport?.let { rules ->
-        var replace by remember(rules) { mutableStateOf(false) }
+        var replace by rememberSaveable(rules) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { if (!state.busy) model.dismissImport() },
             title = { Text(stringResource(R.string.import_rules)) },

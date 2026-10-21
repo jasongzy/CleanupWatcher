@@ -27,6 +27,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.isActive
 
@@ -35,6 +38,13 @@ internal val RootSelectionSaver =
         save = { entries -> entries.flatMap { listOf(it.path, it.name, it.type) } },
         restore = { fields -> fields.chunked(3).map { RootEntry(it[0], it[1], it[2]) } },
     )
+
+private class RootPickerState : ViewModel() {
+    var page by mutableStateOf<RootPage?>(null)
+    var error by mutableStateOf<String?>(null)
+    var cursor by mutableStateOf("-")
+    var completedRequest: Triple<String, Int, String>? = null
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,18 +59,19 @@ internal fun RootPicker(
     val context = LocalContext.current.applicationContext
     val focus = LocalFocusManager.current
     val backend = remember(context) { Backend(context) }
+    val browser = viewModel(viewModelStoreOwner = rememberViewModelStoreOwner()) { RootPickerState() }
     val listState = rememberLazyListState()
     var location by rememberSaveable { mutableStateOf(initialPath.ifEmpty { "/" }) }
     var address by rememberSaveable { mutableStateOf(location) }
     var history by rememberSaveable { mutableStateOf(listOf<String>()) }
     var selected by
         rememberSaveable(stateSaver = RootSelectionSaver) { mutableStateOf(emptyList<RootEntry>()) }
-    var page by remember { mutableStateOf<RootPage?>(null) }
+    var page by browser::page
     var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var limitReached by remember { mutableStateOf(false) }
-    var refresh by remember { mutableIntStateOf(0) }
-    var cursor by remember { mutableStateOf("-") }
+    var error by browser::error
+    var limitReached by rememberSaveable { mutableStateOf(false) }
+    var refresh by rememberSaveable { mutableIntStateOf(0) }
+    var cursor by browser::cursor
     fun navigate(path: String) {
         if (loading || path == location) return
         focus.clearFocus()
@@ -76,6 +87,8 @@ internal fun RootPicker(
         else if (selected.size < maxSelection) selected = selected + entry else limitReached = true
     }
     LaunchedEffect(location, refresh, cursor) {
+        val request = Triple(location, refresh, cursor)
+        if (browser.completedRequest == request) return@LaunchedEffect
         loading = true
         val current = page
         if (cursor == "-") {
@@ -94,7 +107,10 @@ internal fun RootPicker(
         } catch (e: Exception) {
             error = e.message ?: "path"
         } finally {
-            if (isActive) loading = false
+            if (isActive) {
+                browser.completedRequest = request
+                loading = false
+            }
         }
     }
     Dialog(

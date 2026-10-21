@@ -48,6 +48,7 @@ data class UiState(
     val checking: Boolean = false,
     val health: Map<String, String> = emptyMap(),
     val records: List<RecentRecord> = emptyList(),
+    val recordDetails: RecentRecord? = null,
     val busy: Boolean = false,
     val cleaning: Boolean = false,
     val bootBusy: Boolean = false,
@@ -58,6 +59,7 @@ data class UiState(
     val importedRuleIds: Set<String> = emptySet(),
     val error: String? = null,
     val preview: CleanupResult? = null,
+    val savedRuleId: String? = null,
 ) {
     val moduleActive: Boolean
         get() = magisk && module == "enabled"
@@ -439,16 +441,24 @@ class RuleViewModel(app: Application) : AndroidViewModel(app) {
         messages.trySend(Notice(message, synced = mutable.value.installed))
     }
 
-    fun save(next: List<Rule>, replacedId: String, saved: () -> Unit) = task {
+    fun save(next: List<Rule>, replacedId: String) = task {
         val added = next.map { it.id }.toSet() - mutable.value.rules.map { it.id }.toSet()
         val rules = replaceRules(mutable.value.rules, next, replacedId)
         updateRules(rules)
-        saved()
+        mutable.value = mutable.value.copy(savedRuleId = replacedId)
         ruleNotice(R.string.rules_saved)
         if (added.isNotEmpty()) {
             mutable.value = mutable.value.copy(newRuleIds = added)
             if (mutable.value.connected) preparePreview(added)
         }
+    }
+
+    fun acknowledgeRuleSave() {
+        mutable.value = mutable.value.copy(savedRuleId = null)
+    }
+
+    fun selectRecord(record: RecentRecord?) {
+        mutable.value = mutable.value.copy(recordDetails = record)
     }
 
     fun remove(ids: Set<String>) = task {

@@ -18,6 +18,13 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
+
+private class RuleEditorState : ViewModel() {
+    var pendingSave by mutableStateOf<List<Rule>?>(null)
+}
 
 @Composable
 internal fun SaveChangesDialog(
@@ -99,7 +106,8 @@ internal fun RuleEditor(
     var pickerError by rememberSaveable { mutableStateOf<String?>(null) }
     var browser by rememberSaveable { mutableStateOf(false) }
     var whitelistHelp by rememberSaveable { mutableStateOf(false) }
-    var pendingSave by remember { mutableStateOf<List<Rule>?>(null) }
+    val editor = viewModel(viewModelStoreOwner = rememberViewModelStoreOwner()) { RuleEditorState() }
+    var pendingSave by editor::pendingSave
     var confirmSave by rememberSaveable { mutableStateOf(false) }
     var batch by
         rememberSaveable(stateSaver = RootSelectionSaver) { mutableStateOf(emptyList<RootEntry>()) }
