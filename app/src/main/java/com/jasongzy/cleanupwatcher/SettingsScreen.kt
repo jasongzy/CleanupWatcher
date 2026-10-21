@@ -19,6 +19,8 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.os.LocaleListCompat
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,7 +83,9 @@ internal fun SettingsScreen(state: UiState, model: RuleViewModel, dismiss: () ->
                 importer.launch(arrayOf("application/json"))
             }
             SettingsItem(R.drawable.ic_export, R.string.export_rules, enabled = !state.busy) {
-                exporter.launch("cleanupwatcher-rules.json")
+                val timestamp =
+                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
+                exporter.launch("cleanupwatcher-rules-$timestamp.json")
             }
             HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 16.dp))
             SettingsItem(
