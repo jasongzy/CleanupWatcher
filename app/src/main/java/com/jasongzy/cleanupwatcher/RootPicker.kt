@@ -305,13 +305,21 @@ internal fun BatchRuleEditor(
     save: (List<Rule>) -> Unit,
 ) {
     var folderAction by rememberSaveable { mutableStateOf(initialFolderAction) }
+    var confirmSave by rememberSaveable { mutableStateOf(false) }
+    fun requestDismiss() {
+        if (!busy) confirmSave = true
+    }
     val emptyChildren = folderAction == RuleAction.EmptyChildren
     val emptyOnly = folderAction == RuleAction.EmptyTree
     val result =
         remember(targets, folderAction) { runCatching { rulesForEntries(targets, folderAction) } }
     val rules = result.getOrNull().orEmpty()
+    fun requestSave() {
+        confirmSave = false
+        save(rules)
+    }
     Dialog(
-        { if (!busy) dismiss() },
+        ::requestDismiss,
         properties =
             DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
@@ -324,11 +332,11 @@ internal fun BatchRuleEditor(
                             R.drawable.ic_back,
                             R.string.cancel,
                             enabled = !busy,
-                            action = dismiss,
+                            action = ::requestDismiss,
                         )
                     },
                     actions = {
-                        TextButton({ save(rules) }, enabled = !busy && rules.isNotEmpty()) {
+                        TextButton(::requestSave, enabled = !busy && rules.isNotEmpty()) {
                             Text(stringResource(R.string.save))
                         }
                     },
@@ -404,4 +412,12 @@ internal fun BatchRuleEditor(
             }
         }
     }
+    if (confirmSave)
+        SaveChangesDialog(
+            busy = busy,
+            saveEnabled = rules.isNotEmpty(),
+            keepEditing = { confirmSave = false },
+            discard = dismiss,
+            save = ::requestSave,
+        )
 }

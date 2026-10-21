@@ -1,4 +1,8 @@
 <resources>
+    <string name="save_changes_title">Save changes?</string>
+    <string name="save_changes_message">Save your changes before leaving the editor?</string>
+    <string name="discard">Discard</string>
+    <string name="keep_editing">Keep editing</string>
     <string name="app_name">Cleanup Watcher</string>
     <string name="add_rule">Add rule</string>
     <string name="edit_rule">Edit rule</string>

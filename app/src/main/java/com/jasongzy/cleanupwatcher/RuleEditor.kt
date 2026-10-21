@@ -20,6 +20,41 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
 @Composable
+internal fun SaveChangesDialog(
+    busy: Boolean,
+    saveEnabled: Boolean = true,
+    keepEditing: () -> Unit,
+    discard: () -> Unit,
+    save: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!busy) keepEditing() },
+        title = { Text(stringResource(R.string.save_changes_title)) },
+        text = { Text(stringResource(R.string.save_changes_message)) },
+        confirmButton = {
+            TextButton(save, enabled = !busy && saveEnabled) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = {
+            Row {
+                TextButton(keepEditing, enabled = !busy) {
+                    Text(stringResource(R.string.keep_editing))
+                }
+                TextButton(
+                    discard,
+                    enabled = !busy,
+                    colors =
+                        ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                ) {
+                    Text(stringResource(R.string.discard))
+                }
+            }
+        },
+    )
+}
+
+@Composable
 internal fun OptionRow(
     label: Int,
     checked: Boolean,
@@ -65,6 +100,7 @@ internal fun RuleEditor(
     var browser by rememberSaveable { mutableStateOf(false) }
     var whitelistHelp by rememberSaveable { mutableStateOf(false) }
     var pendingSave by remember { mutableStateOf<List<Rule>?>(null) }
+    var confirmSave by rememberSaveable { mutableStateOf(false) }
     var batch by
         rememberSaveable(stateSaver = RootSelectionSaver) { mutableStateOf(emptyList<RootEntry>()) }
     val rule =
@@ -88,8 +124,18 @@ internal fun RuleEditor(
         val updated = rules.firstOrNull { it.id == original.id }?.copy(enabled = original.enabled)
         if (original.enabled && updated != original) pendingSave = rules else save(rules)
     }
+    fun requestSave() {
+        confirmSave = false
+        attempted = true
+        if (rule.error() == null && availableRules > 0) submit(listOf(rule))
+    }
+    fun requestDismiss() {
+        if (!busy) {
+            if (rule != original) confirmSave = true else dismiss()
+        }
+    }
     Dialog(
-        onDismissRequest = { if (!busy) dismiss() },
+        onDismissRequest = ::requestDismiss,
         properties =
             DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
@@ -104,17 +150,11 @@ internal fun RuleEditor(
                             R.drawable.ic_back,
                             R.string.cancel,
                             enabled = !busy,
-                            action = dismiss,
+                            action = ::requestDismiss,
                         )
                     },
                     actions = {
-                        TextButton(
-                            {
-                                attempted = true
-                                if (rule.error() == null && availableRules > 0) submit(listOf(rule))
-                            },
-                            enabled = !busy,
-                        ) {
+                        TextButton(::requestSave, enabled = !busy) {
                             Text(stringResource(R.string.save))
                         }
                     },
@@ -269,6 +309,13 @@ internal fun RuleEditor(
             }
         }
     }
+    if (confirmSave)
+        SaveChangesDialog(
+            busy = busy,
+            keepEditing = { confirmSave = false },
+            discard = dismiss,
+            save = ::requestSave,
+        )
     if (whitelistHelp) {
         val exampleRoot = if (Rule.validRoot(root)) root else original.root
         AlertDialog(

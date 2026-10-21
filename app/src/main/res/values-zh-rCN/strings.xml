@@ -1,4 +1,8 @@
 <resources>
+    <string name="save_changes_title">保存更改？</string>
+    <string name="save_changes_message">是否保存当前更改并退出编辑？</string>
+    <string name="discard">放弃</string>
+    <string name="keep_editing">继续编辑</string>
     <string name="app_name">Cleanup Watcher</string>
     <string name="add_rule">添加规则</string>
     <string name="edit_rule">编辑规则</string>
