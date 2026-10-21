@@ -1,3 +1,4 @@
+import ctypes
 import json
 import os
 import resource
@@ -340,6 +341,30 @@ def check_unrelated_moves(binary: str, env: dict, root: str):
     invoke(binary, env, "rules", "CW\n")
 
 
+def check_idle_directories(binary: str, env: dict, root: str):
+    scope = os.path.join(root, "idle-directories")
+    child = os.path.join(scope, "child")
+    os.makedirs(child)
+    os.symlink(root, os.path.join(child, "link"))
+    libc = ctypes.CDLL(None, use_errno=True)
+    notifications = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+    assert notifications >= 0, ctypes.get_errno()
+    try:
+        in_open = 0x20
+        assert libc.inotify_add_watch(notifications, os.fsencode(child), in_open) >= 0, ctypes.get_errno()
+        for action, pattern, error in ((0, "*.log", ""), (2, "child", "symlink")):
+            invoke(binary, env, "rules", config(scope, action, pattern))
+            invoke(binary, env, "resume")
+            assert invoke(binary, env, "settled")["health"]["test"] == error
+            time.sleep(2)
+            while select.select([notifications], [], [], 0)[0]:
+                os.read(notifications, 65536)
+            assert not select.select([notifications], [], [], 3)[0], "Directory reads triggered repeated cleanup scans"
+    finally:
+        os.close(notifications)
+        invoke(binary, env, "rules", "CW\n")
+
+
 if __name__ == "__main__":
     assert os.geteuid() == 0, "Run in the isolated Linux test environment as root"
     binary = os.path.abspath("build/native-tests/test-daemon")
@@ -354,6 +379,7 @@ if __name__ == "__main__":
         check_slow_subscriber(binary, env, root, process.pid)
         check_control_during_rebuild(binary, env, root)
         check_concurrent_pause(binary, env)
+        check_idle_directories(binary, env, root)
         check_failed_scan_recovers(binary, env, root)
         check_unrelated_moves(binary, env, root)
         check_empty_children(binary, env, root)
@@ -365,6 +391,8 @@ if __name__ == "__main__":
         assert not invoke(binary, env, "settled")["checking"]
         path = os.path.join(folder, "event.log")
         write_file(path)
+        wait_for(lambda: not os.path.exists(path))
+        os.close(os.open(path, os.O_CREAT | os.O_RDONLY, 0o600))
         wait_for(lambda: not os.path.exists(path))
         invoke(binary, env, "pause")
         write_file(path)

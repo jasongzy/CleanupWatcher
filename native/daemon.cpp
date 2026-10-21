@@ -293,8 +293,8 @@ static void worker() {
     auto attach = [&](const std::string &id, int fd, const std::string &path, bool ancestor = false) {
         auto proc = "/proc/self/fd/" + std::to_string(fd);
         int wd = inotify_add_watch(events.get(), proc.c_str(),
-                                   IN_CREATE | IN_CLOSE_WRITE | IN_DELETE | IN_MOVED_TO | IN_MOVED_FROM |
-                                       IN_DELETE_SELF | IN_MOVE_SELF | IN_ONLYDIR);
+                                   IN_CREATE | IN_CLOSE | IN_DELETE | IN_MOVED_TO | IN_MOVED_FROM | IN_DELETE_SELF |
+                                       IN_MOVE_SELF | IN_ONLYDIR);
         if (wd < 0)
             throw std::runtime_error("watch");
         auto &contexts = watches[wd];
@@ -422,6 +422,8 @@ static void worker() {
                     if (name.empty() || name == ".cleanupwatcher")
                         continue;
                     bool directory = event->mask & IN_ISDIR;
+                    if (directory && (event->mask & IN_CLOSE))
+                        continue;
                     if (watch.ancestor) {
                         if (directory && (event->mask & (IN_CREATE | IN_MOVED_TO)))
                             rebuildDue = millis() + 1500;
@@ -445,7 +447,7 @@ static void worker() {
                     if (directory && !rule.recursive &&
                         (rule.action == File || (watch.path.empty() && !matchesName(rule, name))))
                         continue;
-                    if (rule.action == EmptyTree && (event->mask & IN_CLOSE_WRITE))
+                    if (rule.action == EmptyTree && (event->mask & IN_CLOSE))
                         continue;
                     if (rule.action == EmptyChildren &&
                         ((watch.path.empty() && !directory) ||
@@ -476,7 +478,7 @@ static void worker() {
                             rebuildDue = millis() + 1500;
                             continue;
                         }
-                    } else if (!(event->mask & (IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE | IN_MOVED_FROM)))
+                    } else if (!(event->mask & (IN_CLOSE | IN_MOVED_TO | IN_DELETE | IN_MOVED_FROM)))
                         continue;
                     if ((rule.action == EmptyTree || rule.action == EmptyChildren) && (!directory || removed))
                         path = watch.path;
