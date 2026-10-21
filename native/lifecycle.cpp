@@ -262,6 +262,7 @@ void checkReleasedScopes(const std::vector<Rule> &previous, const std::vector<Ru
             throw std::runtime_error("retained");
         if (unlinkat(root.get(), ".cleanupwatcher", AT_REMOVEDIR))
             throw std::runtime_error("staging");
+        refreshSharedPath(rule.root, ".cleanupwatcher");
     }
 }
 void removeBackend() {

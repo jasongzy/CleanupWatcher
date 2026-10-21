@@ -497,6 +497,19 @@ static void writeAll(int fd, const std::string &value) {
         done += static_cast<size_t>(count);
     }
 }
+void refreshSharedPath(const std::string &root, const std::string &relative) {
+    auto path = backingPath(root);
+    if (!under(path, "/data/media/0"))
+        return;
+    path = "/storage/emulated/0" + path.substr(strlen("/data/media/0")) + "/" + relative;
+    auto split = path.find_last_of('/');
+    Fd parent(open(path.substr(0, split).c_str(), O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+    if (parent.get() < 0)
+        return;
+    auto name = path.substr(split + 1);
+    // A same-path RENAME_NOREPLACE revalidates FUSE dentries without changing either filesystem entry.
+    syscall(SYS_renameat2, parent.get(), name.c_str(), parent.get(), name.c_str(), RENAME_NOREPLACE);
+}
 Result execute(Plan &job, const std::function<bool()> &active) {
     Result result;
     Fd staging;
@@ -603,6 +616,9 @@ Result execute(Plan &job, const std::function<bool()> &active) {
         struct stat current{};
         if (fstatat(job.root.get(), STAGING, &current, AT_SYMLINK_NOFOLLOW) == 0 && same(stageIdentity, current))
             unlinkat(job.root.get(), STAGING, AT_REMOVEDIR);
+        for (const auto &item : job.items)
+            refreshSharedPath(job.rule.root, item.path);
+        refreshSharedPath(job.rule.root, STAGING);
     }
     return result;
 }
@@ -679,6 +695,7 @@ std::string recover(const Rule &rule) {
                 fail("staging");
             if (unlinkat(stage.get(), name.c_str(), 0))
                 fail("staging");
+            refreshSharedPath(rule.root, path);
             ++restored;
         }
     } catch (const std::exception &e) {
@@ -687,6 +704,7 @@ std::string recover(const Rule &rule) {
     if (error.empty()) {
         auto root = openRoot(rule.root);
         unlinkat(root.get(), STAGING, AT_REMOVEDIR);
+        refreshSharedPath(rule.root, STAGING);
     }
     return "{\"id\":" + json(rule.id) + ",\"root\":" + json(rule.root) + ",\"restored\":" + std::to_string(restored) +
            ",\"error\":" + json(error) + ",\"paths\":[]}";

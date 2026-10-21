@@ -56,6 +56,7 @@ bool matchesName(const Rule &rule, const std::string &name);
 void requireKey(int fd);
 bool protectedPath(const Rule &rule, int root, const std::string &path, bool subtree = false);
 std::string backingPath(const std::string &logical);
+void refreshSharedPath(const std::string &root, const std::string &relative);
 Fd openRoot(const std::string &logical, bool allowMissing = false);
 Fd openWithin(int root, const std::string &path, bool directory = false);
 Plan plan(const Rule &rule, std::string focus = "");
