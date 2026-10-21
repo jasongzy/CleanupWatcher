@@ -58,6 +58,7 @@
     <string name="error_offline">请先连接或安装后端。</string>
     <string name="error_scope">请选择主用户共享存储中的目录，或应用的 /data/user/0/包名/cache 目录。</string>
     <string name="error_pattern">请输入有效的文件名或匹配模式。</string>
+    <string name="error_filename">匹配到的文件名含有无效的 UTF-8 编码，请重命名后再清理</string>
     <string name="error_directory_pattern">请输入一个准确的目录名称。</string>
     <string name="error_whitelist">请输入有效的相对路径。</string>
     <string name="error_config">规则读取失败，请检查格式。</string>

@@ -112,7 +112,31 @@ std::string unhex(const std::string &value, size_t maxBytes) {
         throw std::runtime_error("config");
     return out;
 }
+static void requireUtf8(const std::string &value) {
+    for (size_t i = 0; i < value.size();) {
+        auto first = static_cast<unsigned char>(value[i++]);
+        if (first < 0x80)
+            continue;
+        int length = first >= 0xc2 && first <= 0xdf   ? 2
+                     : first >= 0xe0 && first <= 0xef ? 3
+                     : first >= 0xf0 && first <= 0xf4 ? 4
+                                                      : 0;
+        if (!length || i + length - 1 > value.size())
+            throw std::runtime_error("filename");
+        unsigned code = first & ((1U << (7 - length)) - 1);
+        for (int j = 1; j < length; ++j) {
+            auto next = static_cast<unsigned char>(value[i++]);
+            if ((next & 0xc0) != 0x80)
+                throw std::runtime_error("filename");
+            code = (code << 6) | (next & 0x3f);
+        }
+        if ((length == 3 && code < 0x800) || (length == 4 && code < 0x10000) || code > 0x10ffff ||
+            (code >= 0xd800 && code <= 0xdfff))
+            throw std::runtime_error("filename");
+    }
+}
 std::string json(const std::string &value) {
+    requireUtf8(value);
     std::string out = "\"";
     static constexpr char digits[] = "0123456789abcdef";
     for (unsigned char ch : value) {
@@ -223,6 +247,9 @@ std::vector<Rule> decodeRules(const std::string &value) {
         rule.id = unhex(id);
         rule.root = unhex(root);
         rule.pattern = unhex(pattern);
+        requireUtf8(rule.id);
+        requireUtf8(rule.root);
+        requireUtf8(rule.pattern);
         rule.recursive = recursive == 1;
         rule.enabled = enabled == 1;
         rule.literal = literal == 1;
@@ -240,6 +267,7 @@ std::vector<Rule> decodeRules(const std::string &value) {
         std::istringstream whitelistLines(unhex(whitelist, 64 * 1024));
         std::string entry;
         while (std::getline(whitelistLines, entry)) {
+            requireUtf8(entry);
             if (!validRelative(entry) || rule.whitelist.size() >= 128)
                 throw std::runtime_error("config");
             rule.whitelist.push_back(entry);

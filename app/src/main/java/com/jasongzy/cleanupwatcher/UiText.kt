@@ -65,6 +65,7 @@ internal fun errorResource(error: String): Int {
             "offline" -> R.string.error_offline
             "scope" -> R.string.error_scope
             "pattern" -> R.string.error_pattern
+            "filename" -> R.string.error_filename
             "directory_pattern" -> R.string.error_directory_pattern
             "whitelist" -> R.string.error_whitelist
             "config" -> R.string.error_config

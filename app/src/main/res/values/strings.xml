@@ -58,6 +58,7 @@
     <string name="error_offline">Connect or install the backend first.</string>
     <string name="error_scope">Choose a folder in primary shared storage or an app’s /data/user/0/package/cache directory.</string>
     <string name="error_pattern">Enter a valid file name or pattern.</string>
+    <string name="error_filename">A matching file name has invalid UTF-8 encoding. Rename it before cleaning</string>
     <string name="error_directory_pattern">Enter one exact directory name.</string>
     <string name="error_whitelist">Enter valid relative paths.</string>
     <string name="error_config">The rules could not be read. Check their format.</string>

@@ -244,6 +244,25 @@ def check_failed_scan_recovers(binary: str, env: dict, root: str):
     invoke(binary, env, "rules", "CW\n")
 
 
+def check_invalid_filename(binary: str, env: dict, root: str):
+    scope = os.path.join(root, "encoding")
+    os.mkdir(scope)
+    invalid = os.fsencode(scope) + b"/\xff.log"
+    os.close(os.open(invalid, os.O_CREAT | os.O_RDONLY, 0o600))
+    rules = config(scope, rule_id="invalid")
+    rules += config(scope, pattern="*.tmp", rule_id="valid").split("\n", 1)[1]
+    invoke(binary, env, "rules", rules)
+    status = invoke(binary, env, "settled")
+    assert status["health"]["invalid"] == "filename", status
+    assert os.path.exists(invalid)
+    valid = os.path.join(scope, "valid.tmp")
+    write_file(valid)
+    wait_for(lambda: not os.path.exists(valid))
+    assert invoke(binary, env, "status")["health"]["valid"] == ""
+    os.unlink(invalid)
+    invoke(binary, env, "rules", "CW\n")
+
+
 def check_concurrent_pause(binary: str, env: dict):
     for _ in range(4):
         clients = []
@@ -383,6 +402,7 @@ if __name__ == "__main__":
         check_failed_scan_recovers(binary, env, root)
         check_unrelated_moves(binary, env, root)
         check_empty_children(binary, env, root)
+        check_invalid_filename(binary, env, root)
         invoke(binary, env, "resume")
         maximum = config(folder)
         maximum = maximum[:-1] + " " * (128 * 1024 - len(maximum)) + "\n"

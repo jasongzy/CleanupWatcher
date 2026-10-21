@@ -325,6 +325,16 @@ int main(int argc, char **argv) {
     rejects([] { backingPath("/data/user/0/.app/cache"); });
     rejects([] { backingPath("/data/user/0/com..app/cache"); });
     assert(backingPath("/sdcard/Logs") == "/data/media/0/Logs");
+    assert(json("\xc2\xa2\xe4\xb8\xad\xf0\x9f\xa7\xb9") == "\"\xc2\xa2\xe4\xb8\xad\xf0\x9f\xa7\xb9\"");
+    for (const std::string name : {"\xff", "\xc0\xaf", "\xc2", "\xe0\x80\x80", "\xed\xa0\x80", "\xf0\x80\x80\x80",
+                                   "\xf4\x90\x80\x80", "\xe4\x41\xad"})
+        rejects([&] { json(name); });
+    auto invalidName = scope + "/\xff.log";
+    put(invalidName);
+    auto invalidPlan = plan(rule);
+    assert(invalidPlan.error == "filename" && invalidPlan.items.empty());
+    assert(execute(invalidPlan).deleted == 0 && fs::exists(invalidName));
+    fs::remove(invalidName);
     assert(!validRelative("../outside"));
     assert(!validRelative("a//b"));
     assert(!validRelative("a/./b"));
