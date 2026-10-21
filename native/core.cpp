@@ -196,7 +196,7 @@ Fd openRoot(const std::string &logical, bool allowMissing) {
     how.flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW;
     how.resolve = RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS;
     int fd = static_cast<int>(syscall(SYS_openat2, AT_FDCWD, path.c_str(), &how, sizeof(how)));
-    if (fd < 0 && errno == ENOENT && allowMissing)
+    if (fd < 0 && (errno == ENOENT || errno == ENOTDIR || errno == ELOOP) && allowMissing)
         return Fd();
     if (fd < 0)
         fail(errno == ENOSYS ? "unsupported" : "storage");
